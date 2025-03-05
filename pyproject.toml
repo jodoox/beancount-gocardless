@@ -1,0 +1,37 @@
+[project]
+name = "beancount-gocardless"
+version = "0.1.6"
+description = ""
+authors = []
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests",
+    "requests-cache",
+    "beancount",
+    "beangulp",
+    "pyyaml",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.scripts]
+beancount-gocardless = "beancount_gocardless.cli:main"
+
+[tool.poetry]
+packages = [{include = "beancount_gocardless", from = "src"}]
+
+
+[tool.poetry.group.dev.dependencies]
+sphinx = "*"
+sphinx-rtd-theme = "*"
+myst_parser = "*"
+pre-commit = "*"
+
+[tool.poetry.group.lint.dependencies]
+ruff = ">=0.9.8"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

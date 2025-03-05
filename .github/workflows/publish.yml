@@ -1,0 +1,41 @@
+name: Upload Python Package to PyPI when a Release is Created
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  pypi-publish:
+    name: Publish release to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/beancount-gocardless
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+      - name: Configure Poetry
+        run: poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+      - name: Install dependencies
+        run: poetry install --no-root
+      - name: Build package
+        run: poetry build
+      - name: Publish package to PyPI
+        run: poetry publish --no-interaction --no-ansi
+      - name: Build Sphinx documentation
+        run: |
+          poetry run sphinx-build -b html docs/ docs/_build
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sphinx-docs
+          path: docs/_build
