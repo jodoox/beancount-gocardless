@@ -49,12 +49,19 @@ Example
 
     import beangulp
     from beancount_gocardless import GoCardLessImporter
-    from smart_importer import apply_hooks, PredictPostings, PredictPayees
+    from smart_importer import PredictPostings, PredictPayees
 
-    importers = [apply_hooks(GoCardLessImporter(), [PredictPostings(), PredictPayees()])]
+    importers = [
+        GoCardLessImporter()
+    ]
+
+    hooks = [
+        PredictPostings().hook,
+        PredictPayees().hook,
+    ]
 
     if __name__ == "__main__":
-        ingest = beangulp.Ingest(importers)
+        ingest = beangulp.Ingest(importers, hooks=hooks)
         ingest()
 
 .. code-block:: bash

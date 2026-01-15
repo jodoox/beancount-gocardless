@@ -25,30 +25,8 @@ You'll need to create a GoCardLess account on https://bankaccountdata.gocardless
 
 ### API Coverage
 
-The GoCardless client provides **complete API coverage** with Pydantic models for all endpoints and data structures:
-
-**🏦 Core Banking:**
-- **Accounts**: Full account metadata, balances, details, and transactions
-- **Institutions**: Bank/institution information and capabilities
-- **Requisitions**: Bank link management with full lifecycle support
-
-**📋 Agreements & Permissions:**
-- **End User Agreements**: Complete agreement lifecycle management
-- **Access Scopes**: Granular permission control
-- **Reconfirmations**: Agreement renewal workflows
-
-**🔧 Advanced Features:**
-- **Integrations**: Institution capability discovery
-- **Token Management**: JWT token handling (internal)
-- **Pagination**: Full paginated response support
-- **Error Handling**: Error response models
-
-**📊 Rich Data Models:**
-- **Transactions**: Complete transaction details with currency exchange, balances, and metadata
-- **Balances**: Multi-currency balance information with transaction impact
-- **Account Details**: Extensive account information including ownership and addresses
-
-Models manually recreated from the swagger spec, providing type-safe access to every API feature.
+The GoCardless client tries to provide complete API coverage with Pydantic models for all endpoints and data structures.
+Models are manually recreated from the swagger spec, providing type-safe access to every API feature.
 
 **Installation:**
 
@@ -80,20 +58,19 @@ accounts:
 
 import beangulp
 from beancount_gocardless import GoCardLessImporter
-from smart_importer import apply_hooks, PredictPostings, PredictPayees
+from smart_importer import PredictPostings, PredictPayees
 
 importers = [
-    apply_hooks(
-        GoCardLessImporter(),
-        [
-            PredictPostings(),
-            PredictPayees(),
-        ],
-    )
+    GoCardLessImporter()
+]
+
+hooks = [
+    PredictPostings().hook,
+    PredictPayees().hook,
 ]
 
 if __name__ == "__main__":
-    ingest = beangulp.Ingest(importers)
+    ingest = beangulp.Ingest(importers, hooks=hooks)
     ingest()
 ```
 
