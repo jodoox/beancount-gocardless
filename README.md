@@ -49,7 +49,8 @@ cache_options: # by default, no caching if cache_options is not provided
 accounts:
     - id: <REDACTED_UUID>
       asset_account: "Assets:Banks:Revolut:Checking"
-      transaction_types: ["booked", "pending"]  # optional, defaults to both
+      transaction_types: ["booked", "pending"]  # optional list, defaults to both
+      preferred_balance_type: "interimAvailable"  # optional, use specific balance type
 ```
 
 ```python

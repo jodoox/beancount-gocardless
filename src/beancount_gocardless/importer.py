@@ -400,36 +400,61 @@ class GoCardLessImporter(beangulp.Importer):
                     for b in balances.balances
                 ],
             )
-            expected_balance = None
-            other_balances = []
-            for bal in balances.balances:
-                if bal.balance_type == "expected":
-                    expected_balance = bal
-                else:
-                    other_balances.append(bal)
 
-            if expected_balance:
+            # Prioritized balance selection
+            PRIORITY = {
+                "expected": 0,
+                "closingBooked": 1,
+                "interimBooked": 2,
+                "interimAvailable": 3,
+                "openingBooked": 4,
+            }
+            if account.preferred_balance_type:
+                PRIORITY[account.preferred_balance_type] = -1
+
+            # Sort balances based on priority, with unknown types at the end
+            sorted_balances = sorted(
+                balances.balances, key=lambda b: PRIORITY.get(b.balance_type, 99)
+            )
+
+            if sorted_balances:
+                selected_balance = sorted_balances[0]
                 balance_amount = amount.Amount(
-                    D(str(expected_balance.balance_amount.amount)),
-                    expected_balance.balance_amount.currency,
+                    D(str(selected_balance.balance_amount.amount)),
+                    selected_balance.balance_amount.currency,
                 )
+
+                # Determine balance date
+                if selected_balance.reference_date:
+                    try:
+                        balance_date = date.fromisoformat(
+                            selected_balance.reference_date
+                        ) + timedelta(days=1)
+                    except ValueError:
+                        balance_date = date.today() + timedelta(days=1)
+                else:
+                    balance_date = date.today() + timedelta(days=1)
+
                 balance_meta = {}
-                balance_amounts = [
-                    D(str(b.balance_amount.amount)) for b in balances.balances
-                ]
-                if len(set(balance_amounts)) > 1:
-                    detail_parts = [
-                        f"{b.balance_type}: {b.balance_amount.amount} {b.balance_amount.currency}"
-                        for b in balances.balances
-                    ]
-                    detail = " / ".join(detail_parts)
-                    balance_meta["detail"] = detail
+
+                # Collect all distinct balance values for metadata
+                distinct_details = []
+                seen_values = set()
+                for b in sorted_balances:
+                    val_str = f"{b.balance_amount.amount} {b.balance_amount.currency}"
+                    if val_str not in seen_values:
+                        distinct_details.append(f"{b.balance_type}: {val_str}")
+                        seen_values.add(val_str)
+
+                balance_meta["detail"] = " / ".join(distinct_details)
+
                 # Include custom metadata from config for consistency with transactions
                 balance_meta.update(custom_metadata)
                 meta = data.new_metadata("", 0, balance_meta)
+
                 balance_entry = data.Balance(
                     meta=meta,
-                    date=date.today() + timedelta(days=1),
+                    date=balance_date,
                     account=asset_account,
                     amount=balance_amount,
                     tolerance=None,
@@ -437,25 +462,12 @@ class GoCardLessImporter(beangulp.Importer):
                 )
                 entries.append(balance_entry)
                 logger.debug(
-                    "Added balance assertion for account %s using expected balance: %s %s",
+                    "Added balance assertion for account %s using %s balance: %s %s",
                     account_id,
+                    selected_balance.balance_type,
                     balance_amount,
-                    date.today() + timedelta(days=1),
+                    balance_date,
                 )
-
-                # Log other balances if they differ from expected
-                expected_amount = D(str(expected_balance.balance_amount.amount))
-                for bal in other_balances:
-                    other_amount = D(str(bal.balance_amount.amount))
-                    if other_amount != expected_amount:
-                        logger.info(
-                            "Account %s has different balance for type %s: %s %s vs expected %s",
-                            account_id,
-                            bal.balance_type,
-                            other_amount,
-                            bal.balance_amount.currency,
-                            expected_amount,
-                        )
 
         logger.info(
             "Processed %d total transactions across %d accounts, created %d entries",

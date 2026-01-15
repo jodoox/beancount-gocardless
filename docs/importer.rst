@@ -23,6 +23,8 @@ YAML file:
   - id: Account ID
   - asset_account: Beancount asset account
   - filing_account (opt): For hooks
+  - preferred_balance_type (opt): Preferred type for balance assertions, availability depends on the bank (e.g. "expected", "closingBooked", "interimBooked", "interimAvailable", "available", "booked")
+  - transaction_types (opt): List of types to fetch ("booked" and/or "pending")
 
 Usage
 -----
@@ -44,6 +46,8 @@ Example
     accounts:
         - id: <REDACTED_UUID>
           asset_account: "Assets:Banks:Revolut:Checking"
+          preferred_balance_type: "expected"
+          transaction_types: ["booked", "pending"]
 
 .. code-block:: python
 

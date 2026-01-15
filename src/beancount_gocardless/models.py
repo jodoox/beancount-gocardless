@@ -4,7 +4,7 @@ Complete coverage of all schemas from swagger.json
 """
 
 from typing import Optional, List, Dict, Any, TypedDict
-from pydantic import BaseModel, Field, ConfigDict, validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 from enum import Enum
 
@@ -166,6 +166,8 @@ class AccountDetail(BaseModel):
 class TransactionAmountSchema(BaseModel):
     """Transaction amount schema."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     amount: str
     currency: str
 
@@ -173,12 +175,16 @@ class TransactionAmountSchema(BaseModel):
 class InstructedAmount(BaseModel):
     """Instructed amount schema."""
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     amount: str
     currency: str
 
 
 class CurrencyExchangeSchema(BaseModel):
     """Currency exchange schema."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     source_currency: str
     exchange_rate: Optional[str] = None
@@ -191,6 +197,8 @@ class CurrencyExchangeSchema(BaseModel):
 
 class BalanceAfterTransactionSchema(BaseModel):
     """Balance after transaction schema."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     balance_after_transaction: Optional[BalanceAmountSchema] = None
     balance_type: Optional[str] = None
@@ -206,6 +214,19 @@ class TransactionSchema(BaseModel):
     value_date_time: Optional[str] = Field(None, description="Value date and time.")
     transaction_amount: TransactionAmountSchema
     currency_exchange: Optional[List[CurrencyExchangeSchema]] = None
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    @field_validator("currency_exchange", mode="before")
+    @classmethod
+    def normalize_currency_exchange(cls, v):
+        """Normalize currency_exchange to always be a list."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return [v]
+        return v
+
     creditor_name: Optional[str] = Field(None, description="Creditor name.")
     creditor_account: Optional[AccountSchema] = None
     creditor_agent: Optional[str] = Field(None, description="Creditor agent.")
@@ -260,6 +281,17 @@ class BankTransaction(BaseModel):
     creditor_name: Optional[str] = Field(None, description="Creditor name.")
     creditor_account: Optional[AccountSchema] = None
     currency_exchange: Optional[List[CurrencyExchangeSchema]] = None
+
+    @field_validator("currency_exchange", mode="before")
+    @classmethod
+    def normalize_currency_exchange(cls, v):
+        """Normalize currency_exchange to always be a list."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return [v]
+        return v
+
     balance_after_transaction: Optional[BalanceAfterTransactionSchema] = None
     bank_transaction_code: Optional[str] = Field(
         None, description="Bank transaction code."
@@ -543,8 +575,10 @@ class AccountConfig(BaseModel):
     asset_account: str
     metadata: Dict[str, Any] = {}
     transaction_types: List[str] = ["booked", "pending"]
+    preferred_balance_type: Optional[str] = None
 
-    @validator("transaction_types")
+    @field_validator("transaction_types")
+    @classmethod
     def validate_transaction_types(cls, v):
         allowed = {"booked", "pending"}
         if not set(v).issubset(allowed):
