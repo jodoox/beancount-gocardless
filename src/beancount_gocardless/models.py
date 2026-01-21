@@ -37,8 +37,10 @@ class StatusEnum(str, Enum):
 class BalanceAmountSchema(BaseModel):
     """Balance amount schema."""
 
-    amount: str
-    currency: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    amount: str = Field(default=None)
+    currency: str = Field(default=None)
 
 
 class BalanceSchema(BaseModel):
@@ -198,10 +200,12 @@ class CurrencyExchangeSchema(BaseModel):
 class BalanceAfterTransactionSchema(BaseModel):
     """Balance after transaction schema."""
 
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True)
 
-    balance_after_transaction: Optional[BalanceAmountSchema] = None
-    balance_type: Optional[str] = None
+    balance_amount: Optional[BalanceAmountSchema] = Field(
+        default=None, validation_alias="balanceAmount"
+    )
+    balance_type: Optional[str] = Field(default=None, validation_alias="balanceType")
 
 
 class TransactionSchema(BaseModel):
@@ -280,6 +284,9 @@ class BankTransaction(BaseModel):
     )
     creditor_name: Optional[str] = Field(None, description="Creditor name.")
     creditor_account: Optional[AccountSchema] = None
+    ultimate_creditor: Optional[str] = Field(
+        default=None, description="Ultimate creditor."
+    )
     currency_exchange: Optional[List[CurrencyExchangeSchema]] = None
 
     @field_validator("currency_exchange", mode="before")
@@ -308,11 +315,13 @@ class BankTransaction(BaseModel):
     booking_date_time: Optional[str] = Field(None, description="Booking date and time.")
     value_date_time: Optional[str] = Field(None, description="Value date and time.")
     entry_reference: Optional[str] = Field(None, description="Entry reference.")
-    additional_information_structured: Optional[str] = Field(
-        None, description="Additional structured information."
+    additional_data_structured: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional structured information.",
     )
     card_transaction: Optional[Dict[str, Any]] = Field(
-        None, description="Card transaction details."
+        default=None,
+        description="Card transaction details.",
     )
     merchant_category_code: Optional[str] = Field(
         None, description="Merchant category code."
@@ -576,6 +585,8 @@ class AccountConfig(BaseModel):
     metadata: Dict[str, Any] = {}
     transaction_types: List[str] = ["booked", "pending"]
     preferred_balance_type: Optional[str] = None
+    exclude_default_metadata: List[str] = []
+    metadata_fields: Optional[Dict[str, str]] = None
 
     @field_validator("transaction_types")
     @classmethod

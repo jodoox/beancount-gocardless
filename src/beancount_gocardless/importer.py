@@ -8,9 +8,21 @@ from beancount.core import amount, data, flags
 from beancount.core.number import D
 
 from .client import GoCardlessClient
-from .models import BankTransaction, GoCardlessConfig
+from .models import BankTransaction, GoCardlessConfig, AccountConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+    """Recursively flatten a nested dict to dotted paths."""
+    result: Dict[str, Any] = {}
+    for key, value in d.items():
+        new_key = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            result.update(_flatten_dict(value, new_key))
+        else:
+            result[new_key] = value
+    return result
 
 
 class ReferenceDuplicatesComparator:
@@ -37,6 +49,13 @@ class GoCardLessImporter(beangulp.Importer):
         config (Optional[GoCardlessConfig]): Configuration loaded from the YAML file.
         _client (Optional[GoCardlessClient]): Instance of the GoCardless API client.
     """
+
+    DEFAULT_METADATA_FIELDS: Dict[str, str] = {
+        "nordref": "transactionId",
+        "creditorName": "creditorName",
+        "debtorName": "debtorName",
+        "bookingDate": "bookingDate",
+    }
 
     def __init__(self) -> None:
         """Initialize the GoCardLessImporter."""
@@ -136,47 +155,45 @@ class GoCardLessImporter(beangulp.Importer):
         )
 
     def add_metadata(
-        self, transaction: BankTransaction, custom_metadata: Dict[str, Any]
+        self,
+        transaction: BankTransaction,
+        custom_metadata: Dict[str, Any],
+        account_config: Optional[AccountConfig] = None,
     ) -> Dict[str, Any]:
-        """
-        Extracts metadata from a transaction and returns it as a dictionary.
-
-        This method can be overridden in subclasses to customize metadata extraction.
-
-        Args:
-            transaction (BankTransaction): The transaction data from the API.
-            custom_metadata (Dict[str, Any]): Custom metadata from the config file.
-
-        Returns:
-            Dict[str, Any]: A dictionary of metadata key-value pairs.
-        """
         metakv: Dict[str, Any] = {}
 
-        # Transaction ID
-        if transaction.transaction_id:
-            metakv["nordref"] = transaction.transaction_id
+        exclude_fields: List[str] = []
+        custom_fields: Dict[str, str] = {}
 
-        # Names
-        if transaction.creditor_name:
-            metakv["creditorName"] = transaction.creditor_name
-        if transaction.debtor_name:
-            metakv["debtorName"] = transaction.debtor_name
+        if account_config is not None:
+            exclude_fields = account_config.exclude_default_metadata or []
+            custom_fields = account_config.metadata_fields or {}
 
-        # Currency exchange
-        if (
-            transaction.currency_exchange
-            and transaction.currency_exchange[0].instructed_amount
-        ):
-            instructedAmount = transaction.currency_exchange[0].instructed_amount
-            metakv["original"] = (
-                f"{instructedAmount.currency} {instructedAmount.amount}"
-            )
+        # Start with defaults, merge with custom fields
+        fields = dict(self.DEFAULT_METADATA_FIELDS)
+        fields.update(custom_fields)
 
-        if transaction.booking_date:
-            metakv["bookingDate"] = transaction.booking_date
+        # Remove excluded fields
+        for key in exclude_fields:
+            fields.pop(key, None)
+
+        for out_key, gcl_path in fields.items():
+            if gcl_path is None:
+                continue
+            val = self._get_gcl_path(transaction, gcl_path)
+            if val is None:
+                continue
+
+            if (
+                out_key == "original"
+                and hasattr(val, "currency")
+                and hasattr(val, "amount")
+            ):
+                metakv[out_key] = f"{val.currency} {val.amount}"
+            else:
+                metakv[out_key] = val
 
         metakv.update(custom_metadata)
-
         return metakv
 
     def get_narration(self, transaction: BankTransaction) -> str:
@@ -264,6 +281,7 @@ class GoCardLessImporter(beangulp.Importer):
         status: str,
         asset_account: str,
         custom_metadata: Dict[str, Any],
+        account_config: Optional[AccountConfig] = None,
     ) -> Optional[data.Transaction]:
         """
         Creates a Beancount transaction entry from a GoCardless transaction.
@@ -275,6 +293,7 @@ class GoCardLessImporter(beangulp.Importer):
             status (str): The transaction status ('booked' or 'pending').
             asset_account (str): The Beancount asset account.
             custom_metadata (Dict[str, Any]): Custom metadata from config
+            account_config (Optional[AccountConfig]): Account configuration for metadata options.
 
         Returns:
             Optional[data.Transaction]: The created Beancount transaction entry, or None if date is invalid.
@@ -282,7 +301,7 @@ class GoCardLessImporter(beangulp.Importer):
         logger.debug(
             "Creating entry for transaction %s (%s)", transaction.transaction_id, status
         )
-        metakv = self.add_metadata(transaction, custom_metadata)
+        metakv = self.add_metadata(transaction, custom_metadata, account_config)
         meta = data.new_metadata("", 0, metakv)
 
         trx_date = self.get_transaction_date(transaction)
@@ -377,7 +396,7 @@ class GoCardLessImporter(beangulp.Importer):
             skipped = 0
             for transaction, status in all_transactions:
                 entry = self.create_transaction_entry(
-                    transaction, status, asset_account, custom_metadata
+                    transaction, status, asset_account, custom_metadata, account
                 )
                 if entry is not None:
                     entries.append(entry)
@@ -476,5 +495,43 @@ class GoCardLessImporter(beangulp.Importer):
             len(entries),
         )
         return entries
+
+    def _get_gcl_path(self, root: Any, dotted: str) -> Any:
+        cur: Any = root
+        for seg in dotted.split("."):
+            if cur is None:
+                return None
+
+            if isinstance(cur, list):
+                if not seg.isdigit():
+                    return None
+                idx = int(seg)
+                if idx >= len(cur):
+                    return None
+                cur = cur[idx]
+                continue
+
+            if isinstance(cur, dict):
+                cur = cur.get(seg)
+                continue
+
+            if hasattr(cur, seg):
+                cur = getattr(cur, seg)
+                continue
+
+            if hasattr(type(cur), "model_fields"):
+                model_fields = type(cur).model_fields
+                name = next(
+                    (n for n, f in model_fields.items() if f.alias == seg), None
+                )
+                if name and hasattr(cur, name):
+                    cur = getattr(cur, name)
+                    continue
+
+            return None
+
+        if isinstance(cur, (dict, list)):
+            return None
+        return cur
 
     cmp = ReferenceDuplicatesComparator(["nordref"])

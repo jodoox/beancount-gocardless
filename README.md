@@ -18,7 +18,7 @@ Documentation: https://beancount-gocardless.readthedocs.io/en/latest/
 - Built-in HTTP caching via `requests-cache` (optional).
 - CLI to manage bank authorization (list banks, create links, list accounts, delete links).
 - Beancount importer: a `beangulp.Importer` implementation that fetches transactions and emits Beancount entries.
-- Import-time metadata control (include/exclude/rename), plus subclassing hooks for advanced needs.
+- Import-time metadata control (exclude fields, add custom fields), plus subclassing hooks for advanced needs.
 
 ## Installation
 
@@ -134,38 +134,57 @@ python my.import extract ./gocardless.yaml --existing ./ledger.bean
 
 ### Via YAML configuration
 
-You can control default metadata behavior per account:
+You can control metadata per account:
 
 ```yaml
 accounts:
   - id: "<REDACTED_UUID>"
     asset_account: "Assets:Banks:Revolut:Checking"
 
-    # Disable all default metadata.
-    include_default_metadata: false
-
-    # Or exclude specific default fields.
+    # Exclude specific default metadata fields.
     exclude_default_metadata: ["bookingDate", "creditorName"]
 
-    # Or rename metadata keys.
-    metadata_key_mapping:
-      creditorName: "payee"
-      debtorName: "sender"
-      nordref: "id"
-
-    # Or add custom nested fields.
+    # Add custom metadata fields using dotted paths.
     metadata_fields:
+      payee: "creditorName"
       cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
-      cardName: "additionalDataStructured.cardInstrument.name"
       balanceType: "balanceAfterTransaction.balance_type"
 ```
 
 Supported options:
 
-- `include_default_metadata` (default: `true`)
-- `exclude_default_metadata` (default: `[]`)
-- `metadata_key_mapping` (default: `{}`)
-- `metadata_fields` (default: `null`) - Add custom nested fields using dotted paths. For example: `"cardScheme": "additionalDataStructured.cardInstrument.cardSchemeName"`
+- `exclude_default_metadata` (default: `[]`) - Exclude specific default metadata fields.
+  - Default fields include: `nordref`, `creditorName`, `debtorName`, `bookingDate`
+- `metadata_fields` (default: `null`) - Add or override metadata fields using dotted paths.
+  - Specify the output key as the dict key and the GoCardless path as the value.
+  - Example: `"cardScheme": "additionalDataStructured.cardInstrument.cardSchemeName"`
+
+### Example configurations
+
+**Use defaults with exclusions:**
+
+```yaml
+accounts:
+  - id: "<REDACTED_UUID>"
+    asset_account: "Assets:Banks:Revolut:Checking"
+    exclude_default_metadata: ["bookingDate"]  # Keep nordref, creditorName, debtorName
+```
+
+**Full customization with custom keys:**
+
+```yaml
+accounts:
+  - id: "<REDACTED_UUID>"
+    asset_account: "Assets:Banks:Revolut:Checking"
+    exclude_default_metadata: []  # Keep all defaults
+    metadata_fields:
+      # Rename default field by using custom key name
+      payee: "creditorName"
+      # Add nested custom fields
+      cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
+      mcc: "merchant_category_code"
+      ultimateCreditor: "ultimate_creditor"
+```
 
 ### Via subclassing
 

@@ -1,12 +1,16 @@
 import pytest
 from unittest.mock import Mock, patch
-from datetime import date, timedelta
+from datetime import date
 from beancount.core import data
 from beancount_gocardless.importer import GoCardLessImporter
 from beancount_gocardless.models import (
     AccountBalance,
+    BalanceAfterTransactionSchema,
     BalanceSchema,
     BalanceAmountSchema,
+    BankTransaction,
+    TransactionAmountSchema,
+    AccountConfig,
 )
 
 
@@ -148,3 +152,207 @@ def test_extract_balance_assertion_preferred(importer):
         # Should use interimAvailable (105.00) even though expected (100.00) exists
         assert balance_entries[0].amount.number == 105
         assert "interimAvailable: 105.00 EUR" in balance_entries[0].meta["detail"]
+
+
+def test_add_metadata_exclude_specific_fields(importer):
+    """Test that specific default metadata fields can be excluded."""
+    transaction = BankTransaction(
+        transaction_id="TX123",
+        creditor_name="Test Creditor",
+        debtor_name="Test Debtor",
+        booking_date="2026-01-15",
+        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
+    )
+
+    config = AccountConfig(
+        id="ACC1",
+        asset_account="Assets:Test",
+        exclude_default_metadata=["creditorName", "bookingDate"],
+    )
+
+    metadata = importer.add_metadata(transaction, {}, config)
+
+    assert metadata["nordref"] == "TX123"
+    assert metadata["debtorName"] == "Test Debtor"
+    assert "creditorName" not in metadata
+    assert "bookingDate" not in metadata
+
+
+def test_add_metadata_custom_fields(importer):
+    """Test that custom metadata fields can be added via metadata_fields."""
+    transaction = BankTransaction(
+        transaction_id="TX123",
+        creditor_name="Test Creditor",
+        debtor_name="Test Debtor",
+        booking_date="2026-01-15",
+        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
+        merchant_category_code="5411",
+        ultimate_creditor="Store Inc",
+    )
+
+    config = AccountConfig(
+        id="ACC1",
+        asset_account="Assets:Test",
+        metadata_fields={
+            "ref": "transactionId",
+            "payee": "creditorName",
+            "mcc": "merchant_category_code",
+            "ultimateCreditor": "ultimate_creditor",
+        },
+    )
+
+    metadata = importer.add_metadata(transaction, {}, config)
+
+    assert "ref" in metadata and metadata["ref"] == "TX123"
+    assert "payee" in metadata and metadata["payee"] == "Test Creditor"
+    assert "mcc" in metadata and metadata["mcc"] == "5411"
+    assert (
+        "ultimateCreditor" in metadata and metadata["ultimateCreditor"] == "Store Inc"
+    )
+    # Note: defaults are also included unless excluded
+    assert "debtorName" in metadata
+    assert "bookingDate" in metadata
+
+
+def test_add_metadata_custom_overrides_default(importer):
+    """Test that custom metadata overrides default metadata keys."""
+    transaction = BankTransaction(
+        transaction_id="TX123",
+        creditor_name="Test Creditor",
+        booking_date="2026-01-15",
+        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
+    )
+
+    config = AccountConfig(id="ACC1", asset_account="Assets:Test")
+    custom_meta = {"nordref": "CUSTOM123", "custom": "value"}
+
+    metadata = importer.add_metadata(transaction, custom_meta, config)
+
+    assert metadata["nordref"] == "CUSTOM123"
+    assert metadata["custom"] == "value"
+    assert metadata["creditorName"] == "Test Creditor"
+
+
+def test_add_metadata_without_account_config(importer):
+    """Test that default metadata is added when no account_config provided."""
+    transaction = BankTransaction(
+        transaction_id="TX123",
+        creditor_name="Test Creditor",
+        booking_date="2026-01-15",
+        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
+    )
+
+    metadata = importer.add_metadata(transaction, {}, None)
+
+    # Should include all default fields that have non-None values
+    assert metadata["nordref"] == "TX123"
+    assert metadata["creditorName"] == "Test Creditor"
+    assert metadata["bookingDate"] == "2026-01-15"
+    assert "debtorName" not in metadata  # debtorName is None, so excluded
+
+
+def test_add_metadata_flattens_nested_dicts(importer):
+    """Test that nested dicts are flattened to dotted paths via metadata_fields."""
+
+    transaction = BankTransaction(
+        transaction_id="TX123",
+        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
+        additional_data_structured={
+            "cardInstrument": {
+                "cardSchemeName": "MASTERCARD",
+                "name": "John Doe",
+                "identification": "1234",
+            }
+        },
+        balance_after_transaction=BalanceAfterTransactionSchema(
+            balance_amount=BalanceAmountSchema(amount="9.52", currency="EUR"),
+            balance_type="InterimBooked",
+        ),
+    )
+
+    config = AccountConfig(
+        id="ACC1",
+        asset_account="Assets:Test",
+        metadata_fields={
+            "additionalDataStructured.cardInstrument.cardSchemeName": "additionalDataStructured.cardInstrument.cardSchemeName",
+            "additionalDataStructured.cardInstrument.name": "additionalDataStructured.cardInstrument.name",
+            "additionalDataStructured.cardInstrument.identification": "additionalDataStructured.cardInstrument.identification",
+            "balanceAfterTransaction.balance_type": "balanceAfterTransaction.balance_type",
+            "balanceAfterTransaction.balance_amount.amount": "balanceAfterTransaction.balance_amount.amount",
+            "balanceAfterTransaction.balance_amount.currency": "balanceAfterTransaction.balance_amount.currency",
+        },
+    )
+
+    metadata = importer.add_metadata(transaction, {}, config)
+
+    # Check nested additionalDataStructured is flattened
+    assert (
+        metadata["additionalDataStructured.cardInstrument.cardSchemeName"]
+        == "MASTERCARD"
+    )
+    assert metadata["additionalDataStructured.cardInstrument.name"] == "John Doe"
+    assert metadata["additionalDataStructured.cardInstrument.identification"] == "1234"
+
+    # Check nested balanceAfterTransaction is flattened
+    assert metadata["balanceAfterTransaction.balance_type"] == "InterimBooked"
+    assert metadata["balanceAfterTransaction.balance_amount.amount"] == "9.52"
+    assert metadata["balanceAfterTransaction.balance_amount.currency"] == "EUR"
+
+    # Check default fields are also present
+    assert metadata["nordref"] == "TX123"
+
+
+def test_add_metadata_with_card_transaction_nested(importer):
+    """Test that custom fields can directly specify desired output keys."""
+    transaction = BankTransaction(
+        transaction_id="TX789",
+        transaction_amount=TransactionAmountSchema(amount="25.00", currency="EUR"),
+        additional_data_structured={
+            "cardInstrument": {
+                "cardSchemeName": "VISA",
+            }
+        },
+    )
+
+    config = AccountConfig(
+        id="ACC1",
+        asset_account="Assets:Test",
+        metadata_fields={
+            "card_scheme": "additionalDataStructured.cardInstrument.cardSchemeName",
+        },
+    )
+
+    metadata = importer.add_metadata(transaction, {}, config)
+
+    assert metadata["card_scheme"] == "VISA"
+    # Check defaults are also present
+    assert "nordref" in metadata
+
+
+def test_add_metadata_nested_with_exclude(importer):
+    """Test that specific nested keys can be excluded."""
+    transaction = BankTransaction(
+        transaction_id="TX999",
+        transaction_amount=TransactionAmountSchema(amount="75.00", currency="EUR"),
+        additional_data_structured={
+            "cardInstrument": {
+                "cardSchemeName": "AMEX",
+                "name": "Jane Doe",
+            }
+        },
+    )
+
+    config = AccountConfig(
+        id="ACC1",
+        asset_account="Assets:Test",
+        metadata_fields={
+            "additionalDataStructured.cardInstrument.cardSchemeName": "additionalDataStructured.cardInstrument.cardSchemeName",
+            "additionalDataStructured.cardInstrument.name": "additionalDataStructured.cardInstrument.name",
+        },
+        exclude_default_metadata=["additionalDataStructured.cardInstrument.name"],
+    )
+
+    metadata = importer.add_metadata(transaction, {}, config)
+
+    assert metadata["additionalDataStructured.cardInstrument.cardSchemeName"] == "AMEX"
+    assert "additionalDataStructured.cardInstrument.name" not in metadata
