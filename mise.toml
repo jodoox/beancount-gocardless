@@ -1,0 +1,7 @@
+[tasks]
+test = "uv sync --extra test && uv run pytest tests/ -v"
+lint = "uv sync --extra lint && uv run ruff check src/ tests/"
+fmt = "uv sync --extra lint && uv run ruff check src/ tests/ --fix"
+fmt-check = "uv sync --extra lint && uv run ruff check src/ tests/"
+build = "uv sync && uv build"
+publish = "uv sync && uv publish --token $PYPI_TOKEN"

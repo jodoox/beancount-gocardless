@@ -1,68 +1,117 @@
-beancount-gocardless
-====================
+[![PyPI](https://img.shields.io/pypi/v/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
+[![Python versions](https://img.shields.io/pypi/pyversions/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
+[![License](https://img.shields.io/pypi/l/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
+[![Documentation Status](https://readthedocs.org/projects/beancount-gocardless/badge/?version=latest)](https://beancount-gocardless.readthedocs.io/en/latest/)
+[![Publish](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml)
 
-GoCardless API client with models manually recreated from swagger spec, plus Beancount importer.
+# beancount-gocardless
+
+Python client for the GoCardless Bank Account Data API (formerly Nordigen), with Pydantic models recreated from the OpenAPI/Swagger spec, plus a Beancount importer.
 
 Inspired by https://github.com/tarioch/beancounttools.
 
-Full documentation at https://beancount-gocardless.readthedocs.io/en/latest/.
+Documentation: https://beancount-gocardless.readthedocs.io/en/latest/
 
-**Key Features:**
+## Key features
 
-- **API Client:** Models based on swagger spec. Built-in caching via `requests-cache`.
-- **GoCardLess CLI**\: A command-line interface to manage authorization with the GoCardless API:
+- API client with typed Pydantic models for endpoints and data structures.
+- Built-in HTTP caching via `requests-cache` (optional).
+- CLI to manage bank authorization (list banks, create links, list accounts, delete links).
+- Beancount importer: a `beangulp.Importer` implementation that fetches transactions and emits Beancount entries.
+- Import-time metadata control (include/exclude/rename), plus subclassing hooks for advanced needs.
 
-    - Listing available banks in a specified country (default: GB).
-    - Creating a link to a specific bank using its ID.
-    - Listing authorized accounts.
-    - Deleting an existing link.
-    - Uses environment variables (`GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`) or command-line arguments for API credentials.
-- **Beancount Importer:**  A `beangulp.Importer` implementation to easily import transactions fetched from the GoCardless API directly into your Beancount ledger.
-
-You'll need to create a GoCardLess account on https://bankaccountdata.gocardless.com/overview/ to get your credentials.
-
-## Development
-
-### API Coverage
-
-The GoCardless client tries to provide complete API coverage with Pydantic models for all endpoints and data structures.
-Models are manually recreated from the swagger spec, providing type-safe access to every API feature.
-
-**Installation:**
+## Installation
 
 ```bash
 pip install beancount-gocardless
 ```
 
-**Usage**
+## Prerequisites (credentials)
+
+Create a GoCardless Bank Account Data account to get API credentials:
+
+https://bankaccountdata.gocardless.com/overview/
+
+You will need:
+
+- `GOCARDLESS_SECRET_ID`
+- `GOCARDLESS_SECRET_KEY`
+
+## CLI usage (bank authorization)
+
+The importer needs an authorized bank connection first. The CLI helps you create and manage it.
+
+Set credentials as environment variables:
+
+```bash
+export GOCARDLESS_SECRET_ID="..."
+export GOCARDLESS_SECRET_KEY="..."
+```
+
+List available banks for a country (example: France):
+
+```bash
+beancount-gocardless banks --country FR
+```
+
+Create an authorization link for a given bank id:
+
+```bash
+beancount-gocardless link create --bank-id "SANDBOXFINANCE_SFIN0000"
+```
+
+List authorized accounts (to get the account id you will put in the YAML config):
+
+```bash
+beancount-gocardless accounts list
+```
+
+Delete an existing link (example):
+
+```bash
+beancount-gocardless link delete --requisition-id "<REDACTED_UUID>"
+```
+
+Run `beancount-gocardless --help` to see the exact command names and options for your installed version.
+
+## Beancount usage
+
+### 1) Create a YAML config
+
+Create `gocardless.yaml`:
+
 ```yaml
-#### gocardless.yaml
 secret_id: $GOCARDLESS_SECRET_ID
 secret_key: $GOCARDLESS_SECRET_KEY
 
-cache_options: # by default, no caching if cache_options is not provided
+# Note: this project substitutes environment variables in YAML values at runtime.
+
+cache_options: # if omitted, caching is disabled
   cache_name: "gocardless"
   backend: "sqlite"
   expire_after: 3600
   old_data_on_error: true
 
 accounts:
-    - id: <REDACTED_UUID>
-      asset_account: "Assets:Banks:Revolut:Checking"
-      transaction_types: ["booked", "pending"]  # optional list, defaults to both
-      preferred_balance_type: "interimAvailable"  # optional, use specific balance type
+  - id: "<REDACTED_UUID>"
+    asset_account: "Assets:Banks:Revolut:Checking"
+    transaction_types: ["booked", "pending"] # optional, defaults to both
+    preferred_balance_type: "interimAvailable" # optional
 ```
 
+### 2) Create an import script
+
+Create `my.import`:
+
 ```python
-#### my.import
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import beangulp
 from beancount_gocardless import GoCardLessImporter
-from smart_importer import PredictPostings, PredictPayees
+from smart_importer import PredictPayees, PredictPostings
 
 importers = [
-    GoCardLessImporter()
+    GoCardLessImporter(),
 ]
 
 hooks = [
@@ -75,7 +124,95 @@ if __name__ == "__main__":
     ingest()
 ```
 
-Import your data from GoCardLess's API
+### 3) Run the import
+
 ```bash
 python my.import extract ./gocardless.yaml --existing ./ledger.bean
+```
+
+## Customizing metadata
+
+### Via YAML configuration
+
+You can control default metadata behavior per account:
+
+```yaml
+accounts:
+  - id: "<REDACTED_UUID>"
+    asset_account: "Assets:Banks:Revolut:Checking"
+
+    # Disable all default metadata.
+    include_default_metadata: false
+
+    # Or exclude specific default fields.
+    exclude_default_metadata: ["bookingDate", "creditorName"]
+
+    # Or rename metadata keys.
+    metadata_key_mapping:
+      creditorName: "payee"
+      debtorName: "sender"
+      nordref: "id"
+
+    # Or add custom nested fields.
+    metadata_fields:
+      cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
+      cardName: "additionalDataStructured.cardInstrument.name"
+      balanceType: "balanceAfterTransaction.balance_type"
+```
+
+Supported options:
+
+- `include_default_metadata` (default: `true`)
+- `exclude_default_metadata` (default: `[]`)
+- `metadata_key_mapping` (default: `{}`)
+- `metadata_fields` (default: `null`) - Add custom nested fields using dotted paths. For example: `"cardScheme": "additionalDataStructured.cardInstrument.cardSchemeName"`
+
+### Via subclassing
+
+For advanced customization, subclass `GoCardLessImporter` and override `add_metadata`:
+
+```python
+from beancount_gocardless import GoCardLessImporter
+
+class CustomImporter(GoCardLessImporter):
+    def add_metadata(self, transaction, custom_metadata, account_config=None):
+        metakv = super().add_metadata(transaction, custom_metadata, account_config)
+
+        if transaction.ultimate_creditor:
+            metakv["ultimateCreditor"] = transaction.ultimate_creditor
+        if transaction.merchant_category_code:
+            metakv["mcc"] = transaction.merchant_category_code
+        if transaction.bank_transaction_code:
+            metakv["bankCode"] = transaction.bank_transaction_code
+
+        return metakv
+
+importers = [CustomImporter()]
+```
+
+The `BankTransaction` model (see `models.py`) contains many optional fields you can expose as metadata, for example:
+
+- `ultimate_creditor`, `ultimate_debtor`
+- `bank_transaction_code`, `proprietary_bank_transaction_code`
+- `merchant_category_code`, `creditor_id`, `mandate_id`
+- `entry_reference`, `account_servicer_reference`
+
+## Development
+
+### API coverage and models
+
+The GoCardless client aims to provide full API coverage with typed models for endpoints and data structures.
+
+Models are manually recreated from the OpenAPI/Swagger spec to keep strong typing and stable semantics.
+
+### Local development
+
+```bash
+git clone https://github.com/jodoox/beancount-gocardless.git
+cd beancount-gocardless
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e ".[dev]"
+pytest
 ```
