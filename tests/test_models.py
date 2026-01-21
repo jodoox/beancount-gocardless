@@ -1,4 +1,3 @@
-import pytest
 from beancount_gocardless.models import (
     AccountTransactions,
     BankTransaction,
@@ -96,52 +95,34 @@ def test_transaction_schema_normalization():
     assert len(model.currency_exchange) == 1
 
 
-def test_complex_multi_currency_normalization():
+def test_complex_multi_currency_normalization(complex_transaction_model):
     """Test normalization with the user's complex multi-currency JSON sample."""
-    test_data = {
-        "transactions": {
-            "booked": [
-                {
-                    "transactionId": "uuid",
-                    "bookingDate": "2026-01-05",
-                    "valueDate": "2026-01-06",
-                    "bookingDateTime": "2026-01-05T12:12:09.133455Z",
-                    "valueDateTime": "2026-01-06T02:47:00.1234324Z",
-                    "transactionAmount": {"amount": "-4.07", "currency": "EUR"},
-                    "currencyExchange": {
-                        "instructedAmount": {"amount": "4.07", "currency": "EUR"},
-                        "sourceCurrency": "EUR",
-                        "exchangeRate": "1.15",
-                        "unitCurrency": "EUR",
-                        "targetCurrency": "USD",
-                    },
-                    "creditorName": "Dunkin Donuts",
-                    "remittanceInformationUnstructuredArray": ["Dunkin Donuts"],
-                    "proprietaryBankTransactionCode": "CARD_PAYMENT",
-                    "balanceAfterTransaction": {
-                        "balanceAmount": {"amount": "9.52", "currency": "EUR"},
-                        "balanceType": "InterimBooked",
-                    },
-                    "additionalDataStructured": {
-                        "cardInstrument": {
-                            "cardSchemeName": "MASTERCARD",
-                            "name": "John Doe",
-                            "identification": "1234",
-                        }
-                    },
-                    "internalTransactionId": "85ecaab0e28caccd799bb8b331285ba5",
-                }
-            ],
-            "pending": [],
-        }
-    }
-
-    # This should not raise ValidationError
-    model = AccountTransactions(**test_data)
-    booked_tx = model.transactions["booked"][0]
+    booked_tx = complex_transaction_model.transactions["booked"][0]
 
     assert isinstance(booked_tx.currency_exchange, list)
     assert len(booked_tx.currency_exchange) == 1
     assert booked_tx.currency_exchange[0].source_currency == "EUR"
     assert booked_tx.currency_exchange[0].instructed_amount.amount == "4.07"
     assert booked_tx.currency_exchange[0].target_currency == "USD"
+
+
+def test_additional_data_structured_is_dict(complex_transaction_model):
+    """Test that additionalDataStructured is stored as a dict (not string)."""
+    booked_tx = complex_transaction_model.transactions["booked"][0]
+
+    assert isinstance(booked_tx.additional_data_structured, dict)
+    assert "cardInstrument" in booked_tx.additional_data_structured
+    assert (
+        booked_tx.additional_data_structured["cardInstrument"]["cardSchemeName"]
+        == "MASTERCARD"
+    )
+
+
+def test_balance_after_transaction_is_model(complex_transaction_model):
+    """Test that balanceAfterTransaction is parsed as a model."""
+    booked_tx = complex_transaction_model.transactions["booked"][0]
+
+    assert booked_tx.balance_after_transaction is not None
+    assert booked_tx.balance_after_transaction.balance_type == "InterimBooked"
+    assert booked_tx.balance_after_transaction.balance_amount.amount == "9.52"
+    assert booked_tx.balance_after_transaction.balance_amount.currency == "EUR"

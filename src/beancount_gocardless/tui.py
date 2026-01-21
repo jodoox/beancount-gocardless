@@ -315,11 +315,6 @@ class AccountsView(BaseSubView):
         """Handle button presses within this view."""
         if event.button.id == "back_to_menu":
             self.post_message(ActionMessage("show_menu"))
-
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses within this view."""
-        if event.button.id == "back_to_menu":
-            self.post_message(ActionMessage("show_menu"))
         elif event.button.id == "select_account_button":
             select_input = self.query_one("#select_account_input", Input)
             try:
@@ -626,8 +621,8 @@ class GoCardLessApp(App):
             "show_menu": MenuView,
             "list_banks": lambda: BanksView(self.client),
             "list_accounts": lambda: AccountsView(self.client),
-            "get_balance": lambda: BalanceView(self.client),
-            "create_link": lambda: LinkView(self.client),
+            # "get_balance": lambda: BalanceView(self.client),
+            # "create_link": lambda: LinkView(self.client),
             "delete_link": lambda: DeleteLinkView(self.client),
         }
 
