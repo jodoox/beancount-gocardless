@@ -404,17 +404,30 @@ class GoCardlessClient:
 
     def get_all_accounts(self) -> List[AccountInfo]:
         """Get all accounts from all requisitions"""
+        from datetime import datetime, timedelta
+
         accounts = []
         for req in self.get_requisitions():
             for account_id in req.accounts:
                 try:
                     account = self.get_account(account_id)
                     account_dict = account.model_dump()
+
+                    access_valid_days = req.access_valid_for_days or 90
+                    created_date = datetime.fromisoformat(
+                        req.created.replace("Z", "+00:00")
+                    )
+                    expiry_date = created_date + timedelta(days=access_valid_days)
+                    is_expired = req.status == "EX"
+
                     account_dict.update(
                         {
                             "requisition_id": req.id,
                             "requisition_reference": req.reference,
                             "institution_id": req.institution_id,
+                            "requisition_status": req.status,
+                            "access_valid_until": expiry_date.isoformat(),
+                            "is_expired": is_expired,
                         }
                     )
                     accounts.append(account_dict)
