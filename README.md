@@ -39,7 +39,7 @@ You will need:
 
 ## CLI usage (bank authorization)
 
-The importer needs an authorized bank connection first. The CLI helps you create and manage it.
+The importer needs an authorized bank connection first. Use the CLI to create and manage connections.
 
 Set credentials as environment variables:
 
@@ -48,31 +48,18 @@ export GOCARDLESS_SECRET_ID="..."
 export GOCARDLESS_SECRET_KEY="..."
 ```
 
-List available banks for a country (example: France):
+Launch the CLI:
 
 ```bash
-beancount-gocardless banks --country FR
+beancount-gocardless
 ```
 
-Create an authorization link for a given bank id:
+Options:
+- List accounts: view connected accounts with expiry status (EXPIRED badge shown for expired connections), select an account to view details, check balances, or delete the link
+- Add account: add a new bank connection by selecting country, choosing a bank, and creating an authorization link
+- List banks: browse available banks by country and create links
 
-```bash
-beancount-gocardless link create --bank-id "SANDBOXFINANCE_SFIN0000"
-```
-
-List authorized accounts (to get the account id you will put in the YAML config):
-
-```bash
-beancount-gocardless accounts list
-```
-
-Delete an existing link (example):
-
-```bash
-beancount-gocardless link delete --requisition-id "<REDACTED_UUID>"
-```
-
-Run `beancount-gocardless --help` to see the exact command names and options for your installed version.
+Account expiry is shown in the list. Use --mock flag for testing without real credentials.
 
 ## Beancount usage
 

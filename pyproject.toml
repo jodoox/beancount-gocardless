@@ -1,6 +1,6 @@
 [project]
 name = "beancount-gocardless"
-version = "0.1.13"
+version = "0.1.14"
 description = ""
 authors = []
 readme = "README.md"
@@ -16,17 +16,15 @@ dependencies = [
     "beangulp",
     "pyyaml",
     "rich",
-    "textual>=3.2.0",
-    "textual-dev>=1.7.0",
     "pydantic>=2.0.0",
     "pre-commit>=4.5.1",
+    "questionary>=2.0.0",
 ]
 license = "MIT"
 license-files = ["LICENSE"]
 
 [project.scripts]
 beancount-gocardless = "beancount_gocardless.cli:main"
-beancount-gocardless-tui = "beancount_gocardless.tui:main"
 
 [project.optional-dependencies]
 dev = [
