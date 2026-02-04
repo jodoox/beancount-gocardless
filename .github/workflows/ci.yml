@@ -6,27 +6,52 @@ on:
   pull_request:
 
 jobs:
-  test-lint:
+  test:
+    name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
           enable-cache: true
-          python-version: "3.12"
 
-      - name: Install mise
-        uses: jdx/mise-action@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python-version }} --extra test
 
       - name: Run tests
-        run: mise run test
+        run: uv run --python ${{ matrix.python-version }} pytest
+
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --python 3.12 --extra lint
 
       - name: Run lint
-        run: mise run lint
+        run: uv run --python 3.12 ruff check .
 
       - name: Run format check
-        run: mise run fmt-check
+        run: uv run --python 3.12 ruff format --check .
