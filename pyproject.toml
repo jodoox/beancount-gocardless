@@ -27,10 +27,11 @@ license-files = ["LICENSE"]
 beancount-gocardless = "beancount_gocardless.cli:main"
 
 [project.optional-dependencies]
-dev = [
-    "sphinx",
-    "sphinx-rtd-theme",
-    "myst_parser",
+docs = [
+  "sphinx",
+  "myst-parser",
+  "sphinx-rtd-theme",
+  "sphinx-autodoc-typehints"
 ]
 lint = [
     "ruff>=0.9.8",

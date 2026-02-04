@@ -1,5 +1,5 @@
 GoCardless Importer
-==================
+===================
 
 Imports GoCardless API transactions to Beancount. Fetches data, parses, generates entries. Extensible.
 

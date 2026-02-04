@@ -13,7 +13,7 @@ Inspired by https://github.com/tarioch/beancounttools/.
 
 Features:
 
-- API Client: Typed models, caching via requests-cache
+- API Client: Typed models, caching via requests-cache to ease initial setup
 - CLI: List banks, create/delete links, list accounts, balances. Env vars or args.
 - Importer: beangulp.Importer for transactions to Beancount.
 
@@ -35,7 +35,7 @@ API Ref
 -------
 
 Client
-------
+~~~~~~
 
 .. include:: client.rst
 
@@ -45,7 +45,7 @@ Client
    :show-inheritance:
 
 CLI
----
+~~~
 
 .. include:: cli.rst
 
@@ -55,19 +55,9 @@ CLI
    :show-inheritance:
 
 Importer
---------
-
-.. include:: importer.rst
-
-.. automodule:: beancount_gocardless.importer
-   :members:
-   :undoc-members:
-   :show-inheritance:
+~~~~~~~~
 
 .. _importer-api:
-
-Importer Documentation
-----------------------
 
 .. include:: importer.rst
 
