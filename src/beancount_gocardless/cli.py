@@ -1,8 +1,7 @@
 """
 Interactive CLI for GoCardless Bank Account Data API.
 
-A polished, modern CLI experience with arrow-key navigation.
-Uses rich for beautiful output and questionary for interactive prompts.
+Uses rich and questionary for interactive prompts and output.
 """
 
 from typing import Optional, Union

@@ -1,67 +1,48 @@
-beancount-gocardless docs
-=========================
+beancount-gocardless
+====================
 
-.. contents:: Table of Contents
-   :depth: 2
+A Python client for the GoCardless Bank Account Data API (formerly Nordigen), featuring Pydantic models and a Beancount importer.
 
-Intro
------
+.. image:: https://img.shields.io/pypi/v/beancount-gocardless.svg
+   :target: https://pypi.org/project/beancount-gocardless/
+   :alt: PyPI
 
-GoCardless API client with Pydantic models from swagger spec, plus Beancount importer.
+.. image:: https://img.shields.io/pypi/pyversions/beancount-gocardless.svg?v=1
+   :target: https://pypi.org/project/beancount-gocardless/
+   :alt: Python versions
 
-Inspired by https://github.com/tarioch/beancounttools/.
+.. image:: https://img.shields.io/pypi/l/beancount-gocardless.svg
+   :target: https://pypi.org/project/beancount-gocardless/
+   :alt: License
 
-Features:
+Overview
+--------
 
-- API Client: Typed models, caching via requests-cache to ease initial setup
-- CLI: List banks, create/delete links, list accounts, balances. Env vars or args.
-- Importer: beangulp.Importer for transactions to Beancount.
+`beancount-gocardless` provides an integration between the GoCardless Bank Account Data API and Beancount. It includes:
 
-Need GoCardless account at https://bankaccountdata.gocardless.com/overview/ for creds.
+*   **API Client**: Typed client using Pydantic models for endpoints and data structures.
+*   **CLI Tool**: Interactive interface to manage bank connections.
+*   **Beancount Importer**: A `beangulp` importer that fetches transactions and converts them into Beancount directives.
 
-Install
--------
+Prerequisites
+-------------
+
+You need a GoCardless Bank Account Data account to obtain your API credentials (`secret_id` and `secret_key`).
+Sign up at `GoCardless Bank Account Data <https://bankaccountdata.gocardless.com/overview/>`_.
+
+Installation
+------------
 
 .. code-block:: bash
 
     pip install beancount-gocardless
 
-Deps
-----
+The project requires Python 3.12+.
 
-Python >= 3.12. Deps from pyproject.toml: requests, requests-cache, beancount, beangulp, pyyaml.
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
 
-API Ref
--------
-
-Client
-~~~~~~
-
-.. include:: client.rst
-
-.. automodule:: beancount_gocardless.client
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-CLI
-~~~
-
-.. include:: cli.rst
-
-.. automodule:: beancount_gocardless.cli
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Importer
-~~~~~~~~
-
-.. _importer-api:
-
-.. include:: importer.rst
-
-.. automodule:: beancount_gocardless.importer
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   client
+   cli
+   importer

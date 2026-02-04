@@ -1,8 +1,8 @@
 [![PyPI](https://img.shields.io/pypi/v/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
-[![Python versions](https://img.shields.io/pypi/pyversions/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
+[![Python versions](https://img.shields.io/pypi/pyversions/beancount-gocardless.svg?v=1)](https://pypi.org/project/beancount-gocardless/)
 [![License](https://img.shields.io/pypi/l/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
 [![Documentation Status](https://readthedocs.org/projects/beancount-gocardless/badge/?version=latest)](https://beancount-gocardless.readthedocs.io/en/latest/)
-[![Publish](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml)
+[![Publish](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml/badge.svg)](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml)
 
 # beancount-gocardless
 
@@ -12,13 +12,12 @@ Inspired by https://github.com/tarioch/beancounttools.
 
 Documentation: https://beancount-gocardless.readthedocs.io/en/latest/
 
-## Key features
+## Overview
 
-- API client with typed Pydantic models for endpoints and data structures.
-- Built-in HTTP caching via `requests-cache` (optional).
-- CLI to manage bank authorization (list banks, create links, list accounts, delete links).
-- Beancount importer: a `beangulp.Importer` implementation that fetches transactions and emits Beancount entries.
-- Import-time metadata control (exclude fields, add custom fields), plus subclassing hooks for advanced needs.
+- **API Client**: Pydantic models for endpoints and data structures.
+- **CLI Tool**: Interactive interface to manage bank connections.
+- **Beancount Importer**: A `beangulp` importer that fetches transactions and emits Beancount directives.
+- **Metadata Control**: Flexible import-time metadata control (exclude fields, add custom fields).
 
 ## Installation
 
@@ -37,9 +36,9 @@ You will need:
 - `GOCARDLESS_SECRET_ID`
 - `GOCARDLESS_SECRET_KEY`
 
-## CLI usage (bank authorization)
+## CLI Tool
 
-The importer needs an authorized bank connection first. Use the CLI to create and manage connections.
+The CLI is interactive. It allows you to list banks, create authorization links, and view connected accounts.
 
 Set credentials as environment variables:
 
@@ -48,20 +47,13 @@ export GOCARDLESS_SECRET_ID="..."
 export GOCARDLESS_SECRET_KEY="..."
 ```
 
-Launch the CLI:
+Launch the tool:
 
 ```bash
 beancount-gocardless
 ```
 
-Options:
-- List accounts: view connected accounts with expiry status (EXPIRED badge shown for expired connections), select an account to view details, check balances, or delete the link
-- Add account: add a new bank connection by selecting country, choosing a bank, and creating an authorization link
-- List banks: browse available banks by country and create links
-
-Account expiry is shown in the list. Use --mock flag for testing without real credentials.
-
-## Beancount usage
+## Beancount Usage
 
 ### 1) Create a YAML config
 
@@ -216,9 +208,6 @@ Models are manually recreated from the OpenAPI/Swagger spec to keep strong typin
 ```bash
 git clone https://github.com/jodoox/beancount-gocardless.git
 cd beancount-gocardless
-python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -e ".[dev]"
-pytest
+uv sync
+uv run pytest
 ```

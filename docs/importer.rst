@@ -1,53 +1,80 @@
-GoCardless Importer
-===================
+Beancount Importer
+==================
 
-Imports GoCardless API transactions to Beancount. Fetches data, parses, generates entries. Extensible.
+The `GoCardLessImporter` class is a `beangulp.Importer` implementation that fetches transactions from the GoCardless API and converts them into Beancount directives.
 
-Classes
--------
+Configuration
+-------------
 
-- GoCardLessImporter: Main importer class.
+The importer is configured using a YAML file. This file contains your credentials, cache settings, and account mappings.
 
-Config
-------
+.. code-block:: yaml
 
-YAML file:
+    # Credential injection (supported via environment variables)
+    secret_id: $GOCARDLESS_SECRET_ID
+    secret_key: $GOCARDLESS_SECRET_KEY
 
-- secret_id, secret_key: API creds
-- cache_options (opt): Caching
-  - cache_name (opt): Name, default "gocardless"
-  - backend (opt): Type, default "sqlite"
-  - expire_after (opt): Secs, default 0
-  - old_data_on_error (opt): Use cache on error, default True
-- accounts: List
-  - id: Account ID
-  - asset_account: Beancount asset account
-  - filing_account (opt): For hooks
-  - preferred_balance_type (opt): Preferred type for balance assertions, availability depends on the bank (e.g. "expected", "closingBooked", "interimBooked", "interimAvailable", "available", "booked")
-  - transaction_types (opt): List of types to fetch ("booked" and/or "pending")
+    # Optional caching configuration
+    cache_options:
+      cache_name: "gocardless"   # Default: "gocardless"
+      backend: "sqlite"          # Default: "sqlite"
+      expire_after: 3600         # Default: 0 (no cache)
+      old_data_on_error: true    # Default: true
+
+    # Account configuration
+    accounts:
+      - id: "ACCOUNT_UUID_FROM_CLI"
+        asset_account: "Assets:Bank:MyAccount"
+
+        # Optional settings
+        transaction_types: ["booked", "pending"]  # Default: ["booked", "pending"]
+        preferred_balance_type: "interimAvailable" # Default: checks expected, closingBooked, etc.
+
+        # Metadata customization
+        exclude_default_metadata: ["bookingDate"]
+        metadata_fields:
+            payee: "creditorName"
+            cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
+
+Configuration Options
+~~~~~~~~~~~~~~~~~~~~~
+
+**Global Settings:**
+
+*   **secret_id**: Your GoCardless Secret ID.
+*   **secret_key**: Your GoCardless Secret Key.
+*   **cache_options**: Dictionary of settings for `requests-cache`.
+
+**Account Settings:**
+
+*   **id**: The GoCardless Account ID (UUID). Retrieve this using the CLI (`beancount-gocardless list_accounts`).
+*   **asset_account**: The Beancount account name to associate with these transactions (e.g., `Assets:Banks:Checking`).
+*   **transaction_types**: List of transaction statuses to import. Options: ``booked``, ``pending``.
+*   **preferred_balance_type**: The balance type to use for balance assertions. Common values: ``expected``, ``interimAvailable``, ``closingBooked``.
+*   **exclude_default_metadata**: List of default metadata keys to exclude (e.g., ``nordref``, ``creditorName``).
+*   **metadata_fields**: Dictionary mapping custom metadata keys to fields in the GoCardless API response (supports dotted paths).
 
 Usage
 -----
 
-1. YAML config with creds/accounts.
-2. Run via beangulp or script.
+Create a Python script to run the import. This is standard for `beangulp` importers.
 
-Example
--------
-.. code-block:: yaml
+**Basic Usage:**
 
-    secret_id: $GOCARDLESS_SECRET_ID
-    secret_key: $GOCARDLESS_SECRET_KEY
-    cache_options:
-        cache_name: "gocardless"
-        backend: "sqlite"
-        expire_after: 3600
-        old_data_on_error: true
-    accounts:
-        - id: <REDACTED_UUID>
-          asset_account: "Assets:Banks:Revolut:Checking"
-          preferred_balance_type: "expected"
-          transaction_types: ["booked", "pending"]
+.. code-block:: python
+
+    import beangulp
+    from beancount_gocardless import GoCardLessImporter
+
+    importer = GoCardLessImporter()
+
+    if __name__ == "__main__":
+        ingest = beangulp.Ingest([importer])
+        ingest()
+
+**With Smart Importer (Recommended):**
+
+If you use `smart_importer` to predict payees and accounts:
 
 .. code-block:: python
 
@@ -55,9 +82,7 @@ Example
     from beancount_gocardless import GoCardLessImporter
     from smart_importer import PredictPostings, PredictPayees
 
-    importers = [
-        GoCardLessImporter()
-    ]
+    importer = GoCardLessImporter()
 
     hooks = [
         PredictPostings().hook,
@@ -65,35 +90,30 @@ Example
     ]
 
     if __name__ == "__main__":
-        ingest = beangulp.Ingest(importers, hooks=hooks)
+        ingest = beangulp.Ingest([importer], hooks=hooks)
         ingest()
+
+**Running the Import:**
 
 .. code-block:: bash
 
-    python my.import extract ./gocardless.yaml --existing ./ledger.bean
+    python my_import.py extract config.yaml
 
 Extensibility
 -------------
 
-Override methods:
+You can subclass `GoCardLessImporter` to customize behavior by overriding the following methods:
 
-- add_metadata(): Add metadata
-- get_narration(): Customize narration
-- get_payee(): Customize payee
-- get_transaction_date(): Handle dates
-- get_transaction_status(): Set flags
-- create_transaction_entry(): Full control
+*   **get_payee(transaction)**: Return the payee string.
+*   **get_narration(transaction)**: Return the narration string.
+*   **get_transaction_date(transaction)**: Return the transaction date.
+*   **add_metadata(transaction, ...)**: Return a dictionary of metadata.
+*   **create_transaction_entry(...)**: Complete control over entry creation.
 
-CLI
----
+Reference
+---------
 
-Manage connections:
-
-.. code-block:: bash
-
-    beancount-gocardless list_banks --country GB
-    beancount-gocardless create_link --bank SANDBOXFINANCE_SFIN0000 --reference myaccount
-    beancount-gocardless list_accounts
-    beancount-gocardless balance --account <ACCOUNT_ID>
-
-Use beancount-gocardless --help for options.
+.. automodule:: beancount_gocardless.importer
+   :members:
+   :undoc-members:
+   :show-inheritance:

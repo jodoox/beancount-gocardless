@@ -1,43 +1,68 @@
-GoCardless CLI
-===============
+CLI Tool
+========
 
-Commands: list banks, create/delete links, list accounts, check balances. Uses GoCardlessClient. Args or env vars.
+The `beancount-gocardless` CLI is an interactive tool for managing bank connections.
 
 Usage
 -----
 
+To start the interactive CLI:
+
+.. code-block:: bash
+
+    beancount-gocardless
+
+Configuration
+-------------
+
+The CLI requires your GoCardless API credentials. You can provide them via environment variables (recommended) or command-line arguments.
+
+Environment Variables
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    export GOCARDLESS_SECRET_ID="your-secret-id"
+    export GOCARDLESS_SECRET_KEY="your-secret-key"
+
+Command-Line Arguments
+~~~~~~~~~~~~~~~~~~~~~~
+
 .. code-block:: console
 
-    beancount-gocardless <mode> [options]
+    $ beancount-gocardless --help
+    usage: beancount-gocardless [-h] [--secret-id SECRET_ID] [--secret-key SECRET_KEY] [--mock] [--env-file ENV_FILE]
 
-Modes
------
+    Interactive CLI for GoCardless Bank Account Data
 
-- list_banks: Banks by country
-- create_link: Create bank link
-- list_accounts: Connected accounts
-- delete_link: Delete link
-- balance: Account balance
+    options:
+      -h, --help            show this help message and exit
+      --secret-id SECRET_ID
+                            API secret ID (defaults to env var GOCARDLESS_SECRET_ID)
+      --secret-key SECRET_KEY
+                            API secret key (defaults to env var GOCARDLESS_SECRET_KEY)
+      --mock                Use mock client with fixture data (for testing)
+      --env-file ENV_FILE   Path to a .env file to load environment variables from
 
-Options
--------
+Interactive Features
+--------------------
 
-- --secret_id: Secret ID (env: GOCARDLESS_SECRET_ID)
-- --secret_key: Secret key (env: GOCARDLESS_SECRET_KEY)
-- --country: Country code, default "GB" (list_banks)
-- --reference: Reference, default "beancount" (create_link/delete_link)
-- --bank: Bank ID (create_link)
-- --account: Account ID (balance)
-- --cache: Enable caching
-- --cache_backend: Backend, default "sqlite"
-- --cache_expire: Expiry secs, default 0
-- --cache_name: Name, default "gocardless"
+Once launched, the CLI provides the following features through an interactive menu:
 
-Examples
---------
+*   **List accounts**: View all connected bank accounts, their status (valid/expired), and IBANs.
+*   **Add account**: Connect a new bank account by selecting your country and bank, then generating an authorization link.
+*   **List banks**: Browse available banks in supported countries.
+*   **View balance**: Check the current balance of any connected account.
+*   **Delete link**: Remove a bank connection.
+*   **Renew connection**: Re-authorize an expired bank connection.
 
-- List UK banks: beancount-gocardless list_banks --country GB
-- Create link: beancount-gocardless create_link --bank MY_BANK_ID --reference myref
-- List accounts: beancount-gocardless list_accounts
-- Delete link: beancount-gocardless delete_link --reference myref
-- Check balance: beancount-gocardless balance --account MY_ACCOUNT_ID
+Mock Mode
+---------
+
+You can explore the CLI without real credentials using the ``--mock`` flag:
+
+.. code-block:: bash
+
+    beancount-gocardless --mock
+
+This mode uses local fixture data to simulate API responses.

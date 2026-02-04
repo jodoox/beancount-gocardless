@@ -43,11 +43,11 @@ class ReferenceDuplicatesComparator:
 
 class GoCardLessImporter(beangulp.Importer):
     """
-    An importer for GoCardless API with improved structure and extensibility.
+    GoCardless API importer for Beancount.
 
     Attributes:
-        config (Optional[GoCardlessConfig]): Configuration loaded from the YAML file.
-        _client (Optional[GoCardlessClient]): Instance of the GoCardless API client.
+        config (Optional[GoCardlessConfig]): Configuration loaded from YAML.
+        _client (Optional[GoCardlessClient]): GoCardless API client instance.
     """
 
     DEFAULT_METADATA_FIELDS: Dict[str, str] = {
