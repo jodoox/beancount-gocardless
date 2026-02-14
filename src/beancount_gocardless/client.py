@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 def strip_headers_hook(response, *args, **kwargs):
-    """
-    Strip response headers to reduce cache size and improve privacy.
-    Only preserves essential headers needed for proper operation.
+    """Strip response headers that override requests_cache behavior.
+
+    Headers like Cache-Control cause requests_cache to re-fetch data that is
+    already cached locally. Removing them lets the custom cache logic take
+    precedence and avoids unnecessary network requests.
     """
     to_preserve = [
         "Content-Type",
@@ -99,7 +101,7 @@ class GoCardlessClient:
         cache_config = {**default_cache_options, **(cache_options or {})}
         logger.debug("Cache config: %s", cache_config)
 
-        # Create cached session with header stripping
+        # Create cached session; strip response headers to prevent cache bypasses
         self.session = requests_cache.CachedSession(**cache_config)
         self.session.hooks["response"].append(strip_headers_hook)
 
