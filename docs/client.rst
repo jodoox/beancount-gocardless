@@ -9,7 +9,7 @@ Features
 *   Requests and responses use Pydantic models for type safety.
 *   API responses can be cached locally via ``requests-cache`` (SQLite backend by default).
 *   Access tokens are acquired and refreshed automatically.
-*   Non-essential response headers are stripped before caching to reduce size.
+*   Response headers (e.g. ``Cache-Control``) are stripped to prevent them from overriding ``requests-cache`` behavior, which would cause unnecessary re-fetching of cached data.
 
 Usage
 -----
