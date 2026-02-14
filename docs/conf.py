@@ -1,9 +1,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../src"))  # Correct path to your source
-
-print()
+sys.path.insert(0, os.path.abspath("../src"))
 
 # Configuration file for the Sphinx documentation builder.
 #

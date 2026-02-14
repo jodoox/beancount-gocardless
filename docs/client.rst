@@ -1,15 +1,15 @@
 API Client
 ==========
 
-The `GoCardlessClient` provides a typed interface to the GoCardless Bank Account Data API.
+The ``GoCardlessClient`` provides a typed interface to the GoCardless Bank Account Data API.
 
 Features
 --------
 
-*   **Typed Models**: Requests and responses use Pydantic models.
-*   **Caching**: Cache API responses via `requests-cache`.
-*   **Token Management**: Handles access token acquisition and refreshing.
-*   **Privacy**: Strips sensitive headers from logs.
+*   Requests and responses use Pydantic models for type safety.
+*   API responses can be cached locally via ``requests-cache`` (SQLite backend by default).
+*   Access tokens are acquired and refreshed automatically.
+*   Non-essential response headers are stripped before caching to reduce size.
 
 Usage
 -----

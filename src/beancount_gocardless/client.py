@@ -1,6 +1,8 @@
 """
-GoCardless Bank Account Data API Client
-Clean, typed, auto-generated client with full caching and header stripping
+GoCardless Bank Account Data API client.
+
+Typed client with Pydantic models, response caching via requests-cache,
+and automatic token management.
 """
 
 import logging
@@ -56,8 +58,18 @@ def strip_headers_hook(response, *args, **kwargs):
 
 
 class GoCardlessClient:
-    """
-    Clean, typed GoCardless Bank Account Data API client with full caching support.
+    """GoCardless Bank Account Data API client.
+
+    Wraps the GoCardless (formerly Nordigen) REST API with typed return values
+    (Pydantic models), optional SQLite-backed response caching, and automatic
+    JWT token acquisition/refresh.
+
+    Args:
+        secret_id: GoCardless API secret ID.
+        secret_key: GoCardless API secret key.
+        cache_options: Optional dict of keyword arguments forwarded to
+            ``requests_cache.CachedSession``. If ``None``, default caching
+            settings are used (SQLite backend, no expiry).
     """
 
     BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
@@ -92,9 +104,17 @@ class GoCardlessClient:
         self.session.hooks["response"].append(strip_headers_hook)
 
     def check_cache_status(self, method: str, url: str, params=None, data=None) -> dict:
-        """
-        Check cache status for a given request.
-        This mimics the original client's cache checking functionality.
+        """Check whether a cached response exists for the given request.
+
+        Args:
+            method: HTTP method (e.g. ``"GET"``).
+            url: Full request URL.
+            params: Optional query parameters.
+            data: Optional request body data.
+
+        Returns:
+            Dict with keys ``key_exists`` (bool), ``is_expired`` (bool or None),
+            and ``cache_key`` (str).
         """
         headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
 
@@ -148,7 +168,7 @@ class GoCardlessClient:
         logger.debug("Access token obtained")
 
     def _request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
-        """Make authenticated request with caching"""
+        """Send an authenticated request, retrying once on 401 after token refresh."""
         url = f"{self.BASE_URL}{endpoint}"
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self.token}"
@@ -174,35 +194,35 @@ class GoCardlessClient:
         return response
 
     def get(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
-        """Make GET request"""
+        """Send a GET request and return the JSON response body."""
         response = self._request("GET", endpoint, params=params)
         return response.json()
 
     def post(self, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
-        """Make POST request"""
+        """Send a POST request and return the JSON response body."""
         response = self._request("POST", endpoint, data=data)
         return response.json()
 
     def delete(self, endpoint: str) -> Dict[str, Any]:
-        """Make DELETE request"""
+        """Send a DELETE request and return the JSON response body."""
         response = self._request("DELETE", endpoint)
         return response.json()
 
     # Account methods
     def get_account(self, account_id: str) -> Account:
-        """Get account metadata"""
+        """Retrieve metadata for a single account."""
         logger.debug("Getting account metadata for %s", account_id)
         data = self.get(f"/accounts/{account_id}/")
         return Account(**data)
 
     def get_account_balances(self, account_id: str) -> AccountBalance:
-        """Get account balances"""
+        """Retrieve balances for a single account."""
         logger.debug("Getting account balances for %s", account_id)
         data = self.get(f"/accounts/{account_id}/balances/")
         return AccountBalance(**data)
 
     def get_account_details(self, account_id: str) -> AccountDetail:
-        """Get account details"""
+        """Retrieve detailed information for a single account."""
         logger.debug("Getting account details for %s", account_id)
         data = self.get(f"/accounts/{account_id}/details/")
         return AccountDetail(**data)
@@ -210,7 +230,15 @@ class GoCardlessClient:
     def get_account_transactions(
         self, account_id: str, days_back: int = 180
     ) -> AccountTransactions:
-        """Get account transactions"""
+        """Retrieve transactions for an account within a date range.
+
+        Args:
+            account_id: GoCardless account UUID.
+            days_back: Number of days of history to fetch (default 180).
+
+        Returns:
+            An ``AccountTransactions`` object containing booked and pending lists.
+        """
         date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
         date_to = datetime.now().strftime("%Y-%m-%d")
         logger.debug(
@@ -236,7 +264,7 @@ class GoCardlessClient:
 
     # Institutions methods
     def get_institutions(self, country: Optional[str] = None) -> List[Institution]:
-        """Get institutions for a country"""
+        """List available banking institutions, optionally filtered by country code."""
         logger.debug("Getting institutions for country %s", country)
         params = {"country": country} if country else {}
         institutions_data = self.get("/institutions/", params=params)
@@ -244,7 +272,7 @@ class GoCardlessClient:
         return [Institution(**inst) for inst in institutions_data]
 
     def get_institution(self, institution_id: str) -> Institution:
-        """Get specific institution"""
+        """Retrieve a single institution by its ID."""
         data = self.get(f"/institutions/{institution_id}/")
         return Institution(**data)
 
@@ -252,7 +280,14 @@ class GoCardlessClient:
     def create_requisition(
         self, redirect: str, institution_id: str, reference: str, **kwargs
     ) -> Requisition:
-        """Create a new requisition"""
+        """Create a new requisition (bank authorization request).
+
+        Args:
+            redirect: URL the user is redirected to after authorization.
+            institution_id: ID of the banking institution.
+            reference: A unique reference string for this requisition.
+            **kwargs: Additional fields forwarded to the API.
+        """
         request_data = {
             "redirect": redirect,
             "institution_id": institution_id,
@@ -263,19 +298,19 @@ class GoCardlessClient:
         return Requisition(**data)
 
     def get_requisitions(self) -> List[Requisition]:
-        """Get all requisitions"""
+        """List all requisitions."""
         logger.debug("Getting all requisitions")
         data = self.get("/requisitions/")
         logger.debug("Fetched %d requisitions", len(data.get("results", [])))
         return [Requisition(**req) for req in data.get("results", [])]
 
     def get_requisition(self, requisition_id: str) -> Requisition:
-        """Get specific requisition"""
+        """Retrieve a single requisition by its ID."""
         data = self.get(f"/requisitions/{requisition_id}/")
         return Requisition(**data)
 
     def delete_requisition(self, requisition_id: str) -> Dict[str, Any]:
-        """Delete a requisition"""
+        """Delete a requisition by its ID."""
         return self.delete(f"/requisitions/{requisition_id}/")
 
     # Agreements methods
@@ -287,7 +322,15 @@ class GoCardlessClient:
         access_scope: List[str],
         **kwargs,
     ) -> EndUserAgreement:
-        """Create end user agreement"""
+        """Create an end-user agreement for a given institution.
+
+        Args:
+            institution_id: ID of the banking institution.
+            max_historical_days: Maximum number of days of transaction history.
+            access_valid_for_days: Number of days the access is valid.
+            access_scope: List of access scopes (e.g. ``["balances", "details", "transactions"]``).
+            **kwargs: Additional fields forwarded to the API.
+        """
         request_data = {
             "institution_id": institution_id,
             "max_historical_days": max_historical_days,
@@ -299,19 +342,19 @@ class GoCardlessClient:
         return EndUserAgreement(**data)
 
     def get_agreements(self) -> List[EndUserAgreement]:
-        """Get all agreements"""
+        """List all end-user agreements."""
         data = self.get("/agreements/enduser/")
         return [EndUserAgreement(**ag) for ag in data.get("results", [])]
 
     def get_agreement(self, agreement_id: str) -> EndUserAgreement:
-        """Get specific agreement"""
+        """Retrieve a single end-user agreement by its ID."""
         data = self.get(f"/agreements/enduser/{agreement_id}/")
         return EndUserAgreement(**data)
 
     def accept_agreement(
         self, agreement_id: str, user_agent: str, ip: str
     ) -> Dict[str, Any]:
-        """Accept an agreement"""
+        """Accept an end-user agreement."""
         data = self.post(
             f"/agreements/enduser/{agreement_id}/accept/",
             data={"user_agent": user_agent, "ip": ip},
@@ -321,7 +364,7 @@ class GoCardlessClient:
     def reconfirm_agreement(
         self, agreement_id: str, user_agent: str, ip: str
     ) -> ReconfirmationRetrieve:
-        """Reconfirm an agreement"""
+        """Reconfirm an end-user agreement."""
         data = self.post(
             f"/agreements/enduser/{agreement_id}/reconfirm/",
             data={"user_agent": user_agent, "ip": ip},
@@ -330,7 +373,7 @@ class GoCardlessClient:
 
     # Token management endpoints (usually handled internally)
     def get_access_token(self) -> SpectacularJWTObtain:
-        """Get a new access token (usually handled internally)"""
+        """Obtain a new JWT access token. Usually handled internally by the client."""
         data = self.post(
             "/token/new/",
             data={"secret_id": self.secret_id, "secret_key": self.secret_key},
@@ -338,18 +381,18 @@ class GoCardlessClient:
         return SpectacularJWTObtain(**data)
 
     def refresh_access_token(self, refresh_token: str) -> SpectacularJWTRefresh:
-        """Refresh access token"""
+        """Refresh an existing JWT access token."""
         data = self.post("/token/refresh/", data={"refresh": refresh_token})
         return SpectacularJWTRefresh(**data)
 
     # Integration endpoints
     def get_integrations(self) -> List[Integration]:
-        """Get all integrations"""
+        """List all integrations."""
         data = self.get("/integrations/")
         return [Integration(**integration) for integration in data]
 
     def get_integration(self, integration_id: str) -> IntegrationRetrieve:
-        """Get specific integration"""
+        """Retrieve a single integration by its ID."""
         data = self.get(f"/integrations/{integration_id}/")
         return IntegrationRetrieve(**data)
 
@@ -357,7 +400,7 @@ class GoCardlessClient:
     def get_requisitions_paginated(
         self, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> PaginatedRequisitionList:
-        """Get paginated requisitions"""
+        """List requisitions with pagination support."""
         params = {}
         if limit:
             params["limit"] = limit
@@ -369,7 +412,7 @@ class GoCardlessClient:
     def get_agreements_paginated(
         self, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> PaginatedEndUserAgreementList:
-        """Get paginated agreements"""
+        """List end-user agreements with pagination support."""
         params = {}
         if limit:
             params["limit"] = limit
@@ -380,19 +423,22 @@ class GoCardlessClient:
 
     # Convenience methods for common workflows
     def list_banks(self, country: Optional[str] = None) -> List[str]:
-        """Quick way to list bank names for a country"""
+        """Return a list of bank names, optionally filtered by country code."""
         institutions = self.get_institutions(country)
         return [inst.name for inst in institutions]
 
     def find_requisition_by_reference(self, reference: str) -> Optional[Requisition]:
-        """Find a requisition by its reference"""
+        """Find a requisition by its reference string, or return ``None``."""
         requisitions = self.get_requisitions()
         return next((req for req in requisitions if req.reference == reference), None)
 
     def create_bank_link(
         self, reference: str, bank_id: str, redirect_url: str = "http://localhost"
     ) -> Optional[str]:
-        """Create bank link and return the URL"""
+        """Create a bank authorization link and return the URL.
+
+        Returns ``None`` if a requisition with the same reference already exists.
+        """
         existing = self.find_requisition_by_reference(reference)
         if existing:
             return None
@@ -403,7 +449,7 @@ class GoCardlessClient:
         return requisition.link
 
     def get_all_accounts(self) -> List[AccountInfo]:
-        """Get all accounts from all requisitions"""
+        """Collect all accounts across all requisitions, with expiry metadata."""
         from datetime import datetime, timedelta
 
         accounts = []
@@ -437,5 +483,5 @@ class GoCardlessClient:
         return accounts
 
     def list_accounts(self) -> List[AccountInfo]:
-        """Alias for get_all_accounts"""
+        """Alias for :meth:`get_all_accounts`."""
         return self.get_all_accounts()

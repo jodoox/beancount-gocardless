@@ -4,9 +4,17 @@ from typing import Optional
 
 
 def load_dotenv(dotenv_path: Optional[str] = None) -> None:
-    """
-    Simple .env loader that searches in current and parent directories.
-    Only handles simple KEY=VALUE pairs and ignores comments.
+    """Load environment variables from a ``.env`` file.
+
+    Parses simple ``KEY=VALUE`` lines, ignoring comments and blank lines.
+    Values already present in the environment are not overwritten.
+
+    If no path is given, searches for a ``.env`` file in the current
+    directory and each parent directory, stopping at the first one found.
+
+    Args:
+        dotenv_path: Explicit path to a ``.env`` file. If ``None``, searches
+            the current directory and its parents.
     """
     if dotenv_path:
         search_paths = [Path(dotenv_path)]
