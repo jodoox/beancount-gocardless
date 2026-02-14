@@ -26,10 +26,20 @@ def _flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
 
 
 class ReferenceDuplicatesComparator:
+    """Compare two Beancount transactions for duplicate detection.
+
+    Two entries are considered duplicates if they share at least one common
+    value among the specified metadata reference keys.
+
+    Args:
+        refs: Metadata keys to compare (default: ``["ref"]``).
+    """
+
     def __init__(self, refs: List[str] = ["ref"]) -> None:
         self.refs = refs
 
     def __call__(self, entry1: data.Transaction, entry2: data.Transaction) -> bool:
+        """Return ``True`` if the two entries share any reference value."""
         entry1Refs = set()
         entry2Refs = set()
         for ref in self.refs:
@@ -160,6 +170,22 @@ class GoCardLessImporter(beangulp.Importer):
         custom_metadata: Dict[str, Any],
         account_config: Optional[AccountConfig] = None,
     ) -> Dict[str, Any]:
+        """Build the metadata dict for a Beancount transaction entry.
+
+        Merges default metadata fields, per-account custom fields from
+        ``account_config``, and any ``custom_metadata`` from the YAML config.
+        Fields listed in ``account_config.exclude_default_metadata`` are removed.
+
+        This method can be overridden in subclasses to add extra metadata.
+
+        Args:
+            transaction: The source GoCardless transaction.
+            custom_metadata: Static metadata dict from the account YAML config.
+            account_config: Account-level configuration controlling field inclusion.
+
+        Returns:
+            A dict of metadata key-value pairs to attach to the Beancount entry.
+        """
         metakv: Dict[str, Any] = {}
 
         exclude_fields: List[str] = []
@@ -219,17 +245,16 @@ class GoCardLessImporter(beangulp.Importer):
         return narration
 
     def get_payee(self, transaction: BankTransaction) -> str:
-        """
-        Extracts the payee from a transaction.
+        """Extract the payee from a transaction.
 
-        This method can be overridden in subclasses to customize payee extraction. The default
+        Override in subclasses to customize payee extraction. The default
         implementation returns an empty string.
 
         Args:
-            transaction (Dict[str, Any]): The transaction data from the API.
+            transaction: The transaction data from the API.
 
         Returns:
-            str: The extracted payee (or an empty string by default).
+            The extracted payee string (empty by default).
         """
         return ""
 
@@ -257,21 +282,20 @@ class GoCardLessImporter(beangulp.Importer):
         tx_amount: amount.Amount,
         asset_account: str,
     ) -> str:
-        """
-        Determines the Beancount transaction flag based on transaction context.
+        """Determine the Beancount flag for a transaction.
 
-        This method can be overridden in subclasses to customize flag assignment. The default
-        implementation returns FLAG_OKAY for booked transactions and FLAG_WARNING for pending.
+        Override in subclasses to customize flag assignment. The default returns
+        ``FLAG_OKAY`` for booked transactions and ``FLAG_WARNING`` for pending.
 
         Args:
-            transaction (Dict[str, Any]): The transaction data from the API.
-            status (str): The transaction status ('booked' or 'pending').
-            metakv (Dict[str, Any]): Transaction metadata.
-            tx_amount (amount.Amount): Transaction amount.
-            asset_account (str): The Beancount asset account.
+            transaction: The transaction data from the API.
+            status: Transaction status (``"booked"`` or ``"pending"``).
+            metakv: Transaction metadata dict.
+            tx_amount: Transaction amount.
+            asset_account: The Beancount asset account string.
 
         Returns:
-            str: The Beancount transaction flag.
+            A Beancount flag character.
         """
         return flags.FLAG_OKAY if status == "booked" else flags.FLAG_WARNING
 
@@ -283,20 +307,20 @@ class GoCardLessImporter(beangulp.Importer):
         custom_metadata: Dict[str, Any],
         account_config: Optional[AccountConfig] = None,
     ) -> Optional[data.Transaction]:
-        """
-        Creates a Beancount transaction entry from a GoCardless transaction.
+        """Create a Beancount transaction entry from a GoCardless transaction.
 
-        This method can be overridden in subclasses to customize entry creation.
+        Override in subclasses for full control over entry creation.
 
         Args:
-            transaction (Dict[str, Any]): The transaction data from the API.
-            status (str): The transaction status ('booked' or 'pending').
-            asset_account (str): The Beancount asset account.
-            custom_metadata (Dict[str, Any]): Custom metadata from config
-            account_config (Optional[AccountConfig]): Account configuration for metadata options.
+            transaction: The GoCardless transaction data.
+            status: Transaction status (``"booked"`` or ``"pending"``).
+            asset_account: The Beancount asset account string.
+            custom_metadata: Static metadata dict from the account YAML config.
+            account_config: Account-level configuration for metadata options.
 
         Returns:
-            Optional[data.Transaction]: The created Beancount transaction entry, or None if date is invalid.
+            A Beancount ``Transaction`` directive, or ``None`` if the transaction
+            has no valid date or amount.
         """
         logger.debug(
             "Creating entry for transaction %s (%s)", transaction.transaction_id, status
@@ -497,6 +521,19 @@ class GoCardLessImporter(beangulp.Importer):
         return entries
 
     def _get_gcl_path(self, root: Any, dotted: str) -> Any:
+        """Resolve a dotted path against a nested object/dict structure.
+
+        Supports traversal of Pydantic models (by field name or alias),
+        plain dicts, and lists (by numeric index).
+
+        Args:
+            root: The root object to traverse.
+            dotted: A dot-separated path string (e.g. ``"creditorAccount.iban"``).
+
+        Returns:
+            The resolved value, or ``None`` if any segment cannot be resolved
+            or the final value is a dict/list.
+        """
         cur: Any = root
         for seg in dotted.split("."):
             if cur is None:

@@ -6,18 +6,18 @@
 
 # beancount-gocardless
 
-Python client for the GoCardless Bank Account Data API (formerly Nordigen), with Pydantic models recreated from the OpenAPI/Swagger spec, plus a Beancount importer.
+Python client for the GoCardless Bank Account Data API (formerly Nordigen), with Pydantic models based on the OpenAPI spec, plus a Beancount importer.
 
-Inspired by https://github.com/tarioch/beancounttools.
+Inspired by [beancounttools](https://github.com/tarioch/beancounttools).
 
 Documentation: https://beancount-gocardless.readthedocs.io/en/latest/
 
 ## Overview
 
-- **API Client**: Pydantic models for endpoints and data structures.
-- **CLI Tool**: Interactive interface to manage bank connections.
-- **Beancount Importer**: A `beangulp` importer that fetches transactions and emits Beancount directives.
-- **Metadata Control**: Flexible import-time metadata control (exclude fields, add custom fields).
+- **API Client** — Typed client with Pydantic models for all endpoints and data structures.
+- **CLI Tool** — Interactive terminal interface to manage bank connections.
+- **Beancount Importer** — A `beangulp` importer that fetches transactions and emits Beancount directives.
+- **Metadata Control** — Configurable metadata: exclude default fields, add custom fields via dotted paths.
 
 ## Installation
 
@@ -199,9 +199,7 @@ The `BankTransaction` model (see `models.py`) contains many optional fields you 
 
 ### API coverage and models
 
-The GoCardless client aims to provide full API coverage with typed models for endpoints and data structures.
-
-Models are manually recreated from the OpenAPI/Swagger spec to keep strong typing and stable semantics.
+The client covers the GoCardless Bank Account Data API with typed Pydantic models for all endpoints and data structures. Models are manually maintained from the OpenAPI/Swagger spec.
 
 ### Local development
 

@@ -1,6 +1,7 @@
 """
-Comprehensive Pydantic models for GoCardless API responses
-Complete coverage of all schemas from swagger.json
+Pydantic models for GoCardless Bank Account Data API requests and responses.
+
+Models are based on the GoCardless OpenAPI/Swagger specification.
 """
 
 from typing import Optional, List, Dict, Any, TypedDict
@@ -580,6 +581,18 @@ class IntegrationRetrieve(BaseModel):
 
 
 class AccountConfig(BaseModel):
+    """Configuration for a single bank account in the importer YAML file.
+
+    Attributes:
+        id: GoCardless account UUID.
+        asset_account: Beancount account name (e.g. ``"Assets:Banks:Checking"``).
+        metadata: Static metadata key-value pairs added to every transaction.
+        transaction_types: Which transaction lists to import (``"booked"``, ``"pending"``).
+        preferred_balance_type: Balance type to prefer for balance assertions.
+        exclude_default_metadata: Default metadata keys to omit from entries.
+        metadata_fields: Custom metadata mappings (output key → GoCardless dotted path).
+    """
+
     id: str
     asset_account: str
     metadata: Dict[str, Any] = {}
@@ -600,6 +613,15 @@ class AccountConfig(BaseModel):
 
 
 class GoCardlessConfig(BaseModel):
+    """Top-level configuration loaded from the importer YAML file.
+
+    Attributes:
+        secret_id: GoCardless API secret ID (supports ``$ENV_VAR`` substitution).
+        secret_key: GoCardless API secret key (supports ``$ENV_VAR`` substitution).
+        cache_options: Settings forwarded to ``requests_cache.CachedSession``.
+        accounts: List of bank account configurations to import.
+    """
+
     secret_id: str
     secret_key: str
     cache_options: Dict[str, Any] = {}

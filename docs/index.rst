@@ -18,16 +18,16 @@ A Python client for the GoCardless Bank Account Data API (formerly Nordigen), fe
 Overview
 --------
 
-`beancount-gocardless` provides an integration between the GoCardless Bank Account Data API and Beancount. It includes:
+``beancount-gocardless`` provides an integration between the GoCardless Bank Account Data API and Beancount. It includes:
 
 *   **API Client**: Typed client using Pydantic models for endpoints and data structures.
 *   **CLI Tool**: Interactive interface to manage bank connections.
-*   **Beancount Importer**: A `beangulp` importer that fetches transactions and converts them into Beancount directives.
+*   **Beancount Importer**: A ``beangulp`` importer that fetches transactions and converts them into Beancount directives.
 
 Prerequisites
 -------------
 
-You need a GoCardless Bank Account Data account to obtain your API credentials (`secret_id` and `secret_key`).
+You need a GoCardless Bank Account Data account to obtain your API credentials (``secret_id`` and ``secret_key``).
 Sign up at `GoCardless Bank Account Data <https://bankaccountdata.gocardless.com/overview/>`_.
 
 Installation
@@ -37,7 +37,7 @@ Installation
 
     pip install beancount-gocardless
 
-The project requires Python 3.12+.
+The project requires Python 3.9+.
 
 .. toctree::
    :maxdepth: 2

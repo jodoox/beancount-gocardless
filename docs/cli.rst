@@ -1,7 +1,7 @@
 CLI Tool
 ========
 
-The `beancount-gocardless` CLI is an interactive tool for managing bank connections.
+The ``beancount-gocardless`` CLI is an interactive tool for managing bank connections.
 
 Usage
 -----

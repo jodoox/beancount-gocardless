@@ -1,7 +1,7 @@
 Beancount Importer
 ==================
 
-The `GoCardLessImporter` class is a `beangulp.Importer` implementation that fetches transactions from the GoCardless API and converts them into Beancount directives.
+The ``GoCardLessImporter`` class is a ``beangulp.Importer`` that fetches transactions from the GoCardless API and converts them into Beancount directives.
 
 Configuration
 -------------
@@ -57,7 +57,7 @@ Configuration Options
 Usage
 -----
 
-Create a Python script to run the import. This is standard for `beangulp` importers.
+Create a Python script to run the import. This is standard for ``beangulp`` importers.
 
 **Basic Usage:**
 
@@ -72,9 +72,9 @@ Create a Python script to run the import. This is standard for `beangulp` import
         ingest = beangulp.Ingest([importer])
         ingest()
 
-**With Smart Importer (Recommended):**
+**With Smart Importer:**
 
-If you use `smart_importer` to predict payees and accounts:
+If you use ``smart_importer`` to predict payees and accounts:
 
 .. code-block:: python
 
@@ -102,13 +102,13 @@ If you use `smart_importer` to predict payees and accounts:
 Extensibility
 -------------
 
-You can subclass `GoCardLessImporter` to customize behavior by overriding the following methods:
+You can subclass ``GoCardLessImporter`` to customize behavior by overriding the following methods:
 
-*   **get_payee(transaction)**: Return the payee string.
-*   **get_narration(transaction)**: Return the narration string.
-*   **get_transaction_date(transaction)**: Return the transaction date.
-*   **add_metadata(transaction, ...)**: Return a dictionary of metadata.
-*   **create_transaction_entry(...)**: Complete control over entry creation.
+*   ``get_payee(transaction)`` — Return the payee string.
+*   ``get_narration(transaction)`` — Return the narration string.
+*   ``get_transaction_date(transaction)`` — Return the transaction date.
+*   ``add_metadata(transaction, ...)`` — Return a dictionary of metadata key-value pairs.
+*   ``create_transaction_entry(...)`` — Full control over Beancount entry creation.
 
 Reference
 ---------
