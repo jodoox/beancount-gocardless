@@ -219,13 +219,15 @@ class GoCardlessImporter(beangulp.Importer):
         Returns:
             The extracted narration.
         """
-        narration = ""
+        parts = []
 
         if transaction.remittance_information_unstructured:
-            narration += transaction.remittance_information_unstructured
+            parts.append(transaction.remittance_information_unstructured)
 
         if transaction.remittance_information_unstructured_array:
-            narration += " ".join(transaction.remittance_information_unstructured_array)
+            parts.append(" ".join(transaction.remittance_information_unstructured_array))
+
+        narration = " ".join(parts)
 
         return narration
 
@@ -327,9 +329,12 @@ class GoCardlessImporter(beangulp.Importer):
                 "Skipping transaction %s with no amount", transaction.transaction_id
             )
             return None
+        currency = transaction.transaction_amount.currency
+        if not currency and self.config:
+            currency = self.config.currency
         tx_amount = amount.Amount(
             D(str(transaction.transaction_amount.amount)),
-            transaction.transaction_amount.currency,
+            currency or "EUR",
         )
 
         flag = self.get_transaction_status(
@@ -356,12 +361,13 @@ class GoCardlessImporter(beangulp.Importer):
             ],
         )
 
-    def extract(self, filepath: str, existing: data.Entries) -> data.Entries:
+    def extract(self, filepath: str, existing_entries: data.Entries = None) -> data.Entries:
         """Extract Beancount entries from GoCardless transactions.
 
         Args:
             filepath: The path to the YAML configuration file.
-            existing: Existing Beancount entries (unused).
+            existing_entries: Previously extracted Beancount entries used for
+                duplicate detection via :attr:`cmp`.
 
         Returns:
             A list of Beancount transaction entries.
@@ -493,6 +499,23 @@ class GoCardlessImporter(beangulp.Importer):
                     balance_amount,
                     balance_date,
                 )
+
+        # Deduplicate against existing entries
+        if existing_entries:
+            existing_txns = [
+                e for e in existing_entries if isinstance(e, data.Transaction)
+            ]
+            if existing_txns:
+                before = len(entries)
+                entries = [
+                    e
+                    for e in entries
+                    if not isinstance(e, data.Transaction)
+                    or not any(self.cmp(e, ex) for ex in existing_txns)
+                ]
+                dupes = before - len(entries)
+                if dupes:
+                    logger.info("Removed %d duplicate entries", dupes)
 
         logger.info(
             "Processed %d total transactions across %d accounts, created %d entries",

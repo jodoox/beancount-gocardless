@@ -1,6 +1,6 @@
-"""
-Mock client for testing without real API calls.
-Returns synthetic demo data for CLI testing.
+"""Mock GoCardless client for CLI testing.
+
+Returns synthetic demo data without making real API calls.
 """
 
 import logging

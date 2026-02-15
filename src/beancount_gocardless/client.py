@@ -1,13 +1,12 @@
-"""
-GoCardless Bank Account Data API client.
+"""GoCardless Bank Account Data API client.
 
-Typed client with Pydantic models, response caching via requests-cache,
-and automatic token management.
+Wraps the GoCardless REST API with Pydantic models, SQLite-backed response
+caching (via requests-cache), and automatic JWT token management.
 """
 
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import requests_cache
 import requests
 from .models import (
@@ -233,6 +232,8 @@ class GoCardlessClient:
     ) -> AccountTransactions:
         """Retrieve transactions for an account within a date range.
 
+        Follows pagination links to fetch all available pages.
+
         Args:
             account_id: GoCardless account UUID.
             days_back: Number of days of history to fetch (default 180).
@@ -240,8 +241,8 @@ class GoCardlessClient:
         Returns:
             An ``AccountTransactions`` object containing booked and pending lists.
         """
-        date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        date_to = datetime.now().strftime("%Y-%m-%d")
+        date_from = (date.today() - timedelta(days=days_back)).isoformat()
+        date_to = date.today().isoformat()
         logger.debug(
             "Fetching transactions for account %s from %s to %s",
             account_id,
@@ -253,14 +254,33 @@ class GoCardlessClient:
             f"/accounts/{account_id}/transactions/",
             params={"date_from": date_from, "date_to": date_to},
         )
-        booked_count = len(data.get("transactions", {}).get("booked", []))
-        pending_count = len(data.get("transactions", {}).get("pending", []))
+
+        all_booked = list(data.get("transactions", {}).get("booked", []))
+        all_pending = list(data.get("transactions", {}).get("pending", []))
+
+        # Follow pagination links if present
+        next_url = data.get("next")
+        while next_url:
+            # next_url is an absolute URL; strip the base to get the endpoint
+            if next_url.startswith(self.BASE_URL):
+                endpoint = next_url[len(self.BASE_URL):]
+            else:
+                endpoint = next_url
+            page_data = self.get(endpoint)
+            all_booked.extend(page_data.get("transactions", {}).get("booked", []))
+            all_pending.extend(page_data.get("transactions", {}).get("pending", []))
+            next_url = page_data.get("next")
+
         logger.debug(
             "Fetched %d booked and %d pending transactions for account %s",
-            booked_count,
-            pending_count,
+            len(all_booked),
+            len(all_pending),
             account_id,
         )
+
+        data["transactions"] = {"booked": all_booked, "pending": all_pending}
+        data.pop("next", None)
+        data.pop("previous", None)
         return AccountTransactions(**data)
 
     # Institutions methods

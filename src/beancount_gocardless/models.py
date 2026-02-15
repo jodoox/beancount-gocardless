@@ -1,7 +1,6 @@
-"""
-Pydantic models for GoCardless Bank Account Data API requests and responses.
+"""Pydantic models for GoCardless Bank Account Data API requests and responses.
 
-Models are based on the GoCardless OpenAPI/Swagger specification.
+Based on the GoCardless OpenAPI specification.
 """
 
 from typing import Optional, List, Dict, Any, TypedDict
@@ -603,11 +602,13 @@ class GoCardlessConfig(BaseModel):
     Attributes:
         secret_id: GoCardless API secret ID (supports ``$ENV_VAR`` substitution).
         secret_key: GoCardless API secret key (supports ``$ENV_VAR`` substitution).
+        currency: Default currency code for transactions missing one (default ``"EUR"``).
         cache_options: Settings forwarded to ``requests_cache.CachedSession``.
         accounts: List of bank account configurations to import.
     """
 
     secret_id: str
     secret_key: str
+    currency: str = "EUR"
     cache_options: Dict[str, Any] = {}
     accounts: List[AccountConfig]

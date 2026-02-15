@@ -1,8 +1,7 @@
-"""
-GoCardless Bank Account Data API client and Beancount importer.
+"""GoCardless Bank Account Data API client and Beancount importer.
 
-Provides a typed API client with Pydantic models and a beangulp importer
-for converting GoCardless transactions into Beancount directives.
+Provides a REST API client with Pydantic models and a beangulp importer
+that converts GoCardless transactions into Beancount directives.
 """
 
 from importlib.metadata import version
