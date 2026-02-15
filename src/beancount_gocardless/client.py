@@ -1,7 +1,7 @@
 """GoCardless Bank Account Data API client.
 
-Wraps the GoCardless REST API with Pydantic models, SQLite-backed response
-caching (via requests-cache), and automatic JWT token management.
+Wraps the GoCardless REST API with Pydantic models and SQLite-backed response
+caching (via requests-cache).
 """
 
 import logging
@@ -263,7 +263,7 @@ class GoCardlessClient:
         while next_url:
             # next_url is an absolute URL; strip the base to get the endpoint
             if next_url.startswith(self.BASE_URL):
-                endpoint = next_url[len(self.BASE_URL):]
+                endpoint = next_url[len(self.BASE_URL) :]
             else:
                 endpoint = next_url
             page_data = self.get(endpoint)
