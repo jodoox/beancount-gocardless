@@ -1,7 +1,7 @@
-"""
-Interactive CLI for GoCardless Bank Account Data API.
+"""Interactive CLI for managing GoCardless bank connections.
 
-Uses rich and questionary for interactive prompts and output.
+Provides commands to list accounts, add new bank links, and browse
+institutions. Uses rich for output and questionary for interactive prompts.
 """
 
 from typing import Optional, Union
@@ -303,6 +303,10 @@ class CLI:
 
         try:
             old_req = self.client.find_requisition_by_reference(reference)
+            if old_req:
+                self.client.delete_requisition(old_req.id)
+                self._print_success("Old expired link deleted")
+
             link = self.client.create_bank_link(reference, institution_id)
 
             if link:
@@ -319,16 +323,6 @@ class CLI:
                 self.console.print(
                     "[dim]Open this link in your browser to authorize the connection.[/dim]"
                 )
-
-                if old_req:
-                    self.console.print()
-                    delete_old = questionary.confirm(
-                        "Have you authorized the new link? Delete the old expired one now?",
-                        default=False,
-                    ).ask()
-                    if delete_old:
-                        self.client.delete_requisition(old_req.id)
-                        self._print_success("Old expired link deleted")
             else:
                 self._print_error("Could not create new bank link")
 
