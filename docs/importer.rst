@@ -1,7 +1,7 @@
 Beancount Importer
 ==================
 
-The ``GoCardLessImporter`` class is a ``beangulp.Importer`` that fetches transactions from the GoCardless API and converts them into Beancount directives.
+The ``GoCardlessImporter`` class is a ``beangulp.Importer`` that fetches transactions from the GoCardless API and converts them into Beancount directives.
 
 Configuration
 -------------
@@ -64,9 +64,9 @@ Create a Python script to run the import. This is standard for ``beangulp`` impo
 .. code-block:: python
 
     import beangulp
-    from beancount_gocardless import GoCardLessImporter
+    from beancount_gocardless import GoCardlessImporter
 
-    importer = GoCardLessImporter()
+    importer = GoCardlessImporter()
 
     if __name__ == "__main__":
         ingest = beangulp.Ingest([importer])
@@ -79,10 +79,10 @@ If you use ``smart_importer`` to predict payees and accounts:
 .. code-block:: python
 
     import beangulp
-    from beancount_gocardless import GoCardLessImporter
+    from beancount_gocardless import GoCardlessImporter
     from smart_importer import PredictPostings, PredictPayees
 
-    importer = GoCardLessImporter()
+    importer = GoCardlessImporter()
 
     hooks = [
         PredictPostings().hook,
@@ -102,7 +102,7 @@ If you use ``smart_importer`` to predict payees and accounts:
 Extensibility
 -------------
 
-You can subclass ``GoCardLessImporter`` to customize behavior by overriding the following methods:
+You can subclass ``GoCardlessImporter`` to customize behavior by overriding the following methods:
 
 *   ``get_payee(transaction)`` — Return the payee string.
 *   ``get_narration(transaction)`` — Return the narration string.

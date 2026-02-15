@@ -86,11 +86,11 @@ Create `my.import`:
 #!/usr/bin/env python3
 
 import beangulp
-from beancount_gocardless import GoCardLessImporter
+from beancount_gocardless import GoCardlessImporter
 from smart_importer import PredictPayees, PredictPostings
 
 importers = [
-    GoCardLessImporter(),
+    GoCardlessImporter(),
 ]
 
 hooks = [
@@ -167,12 +167,12 @@ accounts:
 
 ### Via subclassing
 
-For advanced customization, subclass `GoCardLessImporter` and override `add_metadata`:
+For advanced customization, subclass `GoCardlessImporter` and override `add_metadata`:
 
 ```python
-from beancount_gocardless import GoCardLessImporter
+from beancount_gocardless import GoCardlessImporter
 
-class CustomImporter(GoCardLessImporter):
+class CustomImporter(GoCardlessImporter):
     def add_metadata(self, transaction, custom_metadata, account_config=None):
         metakv = super().add_metadata(transaction, custom_metadata, account_config)
 

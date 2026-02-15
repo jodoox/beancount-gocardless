@@ -2922,7 +2922,7 @@
                             "N26": {
                                 "value": "N26_NTSBDEB1",
                                 "summary": "N26",
-                                "description": "GoCardLess's Institution ID for N26"
+                                "description": "GoCardless's Institution ID for N26"
                             }
                         }
                     }

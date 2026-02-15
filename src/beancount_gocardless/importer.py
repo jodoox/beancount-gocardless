@@ -1,28 +1,17 @@
 import logging
 from datetime import date, timedelta
 from os import path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 import beangulp
 import yaml
 from beancount.core import amount, data, flags
 from beancount.core.number import D
 
 from .client import GoCardlessClient
-from .models import BankTransaction, GoCardlessConfig, AccountConfig
+from .models import AccountConfig, BankTransaction, GoCardlessConfig
 
 logger = logging.getLogger(__name__)
-
-
-def _flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
-    """Recursively flatten a nested dict to dotted paths."""
-    result: Dict[str, Any] = {}
-    for key, value in d.items():
-        new_key = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict):
-            result.update(_flatten_dict(value, new_key))
-        else:
-            result[new_key] = value
-    return result
 
 
 class ReferenceDuplicatesComparator:
@@ -40,24 +29,26 @@ class ReferenceDuplicatesComparator:
 
     def __call__(self, entry1: data.Transaction, entry2: data.Transaction) -> bool:
         """Return ``True`` if the two entries share any reference value."""
-        entry1Refs = set()
-        entry2Refs = set()
+        entry1_refs = set()
+        entry2_refs = set()
         for ref in self.refs:
             if ref in entry1.meta:
-                entry1Refs.add(entry1.meta[ref])
+                entry1_refs.add(entry1.meta[ref])
             if ref in entry2.meta:
-                entry2Refs.add(entry2.meta[ref])
+                entry2_refs.add(entry2.meta[ref])
 
-        return bool(entry1Refs & entry2Refs)
+        return bool(entry1_refs & entry2_refs)
 
 
-class GoCardLessImporter(beangulp.Importer):
-    """
-    GoCardless API importer for Beancount.
+class GoCardlessImporter(beangulp.Importer):
+    """GoCardless API importer for Beancount.
+
+    Fetches transactions from the GoCardless Bank Account Data API and
+    converts them into Beancount directives.
 
     Attributes:
-        config (Optional[GoCardlessConfig]): Configuration loaded from YAML.
-        _client (Optional[GoCardlessClient]): GoCardless API client instance.
+        config: Configuration loaded from YAML.
+        _client: GoCardless API client instance.
     """
 
     DEFAULT_METADATA_FIELDS: Dict[str, str] = {
@@ -68,18 +59,17 @@ class GoCardLessImporter(beangulp.Importer):
     }
 
     def __init__(self) -> None:
-        """Initialize the GoCardLessImporter."""
-        logger.debug("Initializing GoCardLessImporter")
+        """Initialize the GoCardlessImporter."""
+        logger.debug("Initializing GoCardlessImporter")
         self.config: Optional[GoCardlessConfig] = None
         self._client: Optional[GoCardlessClient] = None
 
     @property
     def client(self) -> GoCardlessClient:
-        """
-        Lazily initializes and returns the GoCardless API client.
+        """Lazily initialize and return the GoCardless API client.
 
         Returns:
-            GoCardlessClient: The initialized GoCardless API client.
+            The initialized GoCardless API client.
 
         Raises:
             ValueError: If config is not loaded.
@@ -96,41 +86,38 @@ class GoCardLessImporter(beangulp.Importer):
         return self._client
 
     def identify(self, filepath: str) -> bool:
-        """
-        Identifies if the given file is a GoCardless configuration file.
+        """Identify if the given file is a GoCardless configuration file.
 
         Args:
-            filepath (str): The path to the file.
+            filepath: The path to the file.
 
         Returns:
-            bool: True if the file is a GoCardless configuration file, False otherwise.
+            True if the file is a GoCardless configuration file.
         """
         result = path.basename(filepath).endswith("gocardless.yaml")
         logger.debug("Identifying file %s: %s", filepath, result)
         return result
 
     def account(self, filepath: str) -> str:
-        """
-        Returns an empty string as account (not directly used in this importer).
+        """Return an empty string as account (derived from config instead).
 
         Args:
-            filepath (str): The path to the file. Not used in this implementation.
+            filepath: The path to the file (unused).
 
         Returns:
-            str: An empty string.
+            An empty string.
         """
         logger.debug("Returning account for %s: ''", filepath)
         return ""  # We get the account from the config file
 
     def load_config(self, filepath: str) -> Optional[GoCardlessConfig]:
-        """
-        Loads configuration from the specified YAML file.
+        """Load configuration from the specified YAML file.
 
         Args:
-            filepath (str): The path to the YAML configuration file.
+            filepath: The path to the YAML configuration file.
 
         Returns:
-            GoCardlessConfig: The loaded configuration. Also sets the `self.config` attribute.
+            The loaded configuration. Also sets ``self.config``.
         """
         logger.debug("Loading config from %s", filepath)
         with open(filepath, "r") as f:
@@ -143,15 +130,14 @@ class GoCardLessImporter(beangulp.Importer):
     def get_all_transactions(
         self, transactions_dict: Dict[str, List[BankTransaction]], types: List[str]
     ) -> List[Tuple[BankTransaction, str]]:
-        """
-        Combines transactions of specified types and sorts them by date.
+        """Combine transactions of specified types and sort them by date.
 
         Args:
-            transactions_dict (Dict[str, List[BankTransaction]]): Transactions by type.
-            types (List[str]): Types to include.
+            transactions_dict: Transactions grouped by type.
+            types: Types to include.
 
         Returns:
-            List[Tuple[BankTransaction, str]]: Sorted list of (transaction, type) tuples.
+            Sorted list of (transaction, type) tuples.
         """
         all_transactions = []
         for tx_type in types:
@@ -223,16 +209,15 @@ class GoCardLessImporter(beangulp.Importer):
         return metakv
 
     def get_narration(self, transaction: BankTransaction) -> str:
-        """
-        Extracts the narration from a transaction.
+        """Extract the narration from a transaction.
 
         This method can be overridden in subclasses to customize narration extraction.
 
         Args:
-            transaction (BankTransaction): The transaction data from the API.
+            transaction: The transaction data from the API.
 
         Returns:
-            str: The extracted narration.
+            The extracted narration.
         """
         narration = ""
 
@@ -259,17 +244,15 @@ class GoCardLessImporter(beangulp.Importer):
         return ""
 
     def get_transaction_date(self, transaction: BankTransaction) -> Optional[date]:
-        """
-        Extracts the transaction date from a transaction. Prefers 'valueDate',
-        falls back to 'bookingDate'.
+        """Extract the transaction date. Prefers value_date, falls back to booking_date.
 
         This method can be overridden in subclasses to customize date extraction.
 
         Args:
-            transaction (BankTransaction): The transaction data from the API.
+            transaction: The transaction data from the API.
 
         Returns:
-            Optional[date]: The extracted transaction date, or None if no date is found.
+            The extracted transaction date, or None if no date is found.
         """
         date_str = transaction.value_date or transaction.booking_date
         return date.fromisoformat(date_str) if date_str else None
@@ -374,15 +357,14 @@ class GoCardLessImporter(beangulp.Importer):
         )
 
     def extract(self, filepath: str, existing: data.Entries) -> data.Entries:
-        """
-        Extracts Beancount entries from GoCardless transactions.
+        """Extract Beancount entries from GoCardless transactions.
 
         Args:
-            filepath (str): The path to the YAML configuration file.
-            existing (data.Entries): Existing Beancount entries (not used in this implementation).
+            filepath: The path to the YAML configuration file.
+            existing: Existing Beancount entries (unused).
 
         Returns:
-            data.Entries: A list of Beancount transaction entries.
+            A list of Beancount transaction entries.
         """
         logger.info("Starting extraction from %s", filepath)
         self.load_config(filepath)
@@ -445,7 +427,7 @@ class GoCardLessImporter(beangulp.Importer):
             )
 
             # Prioritized balance selection
-            PRIORITY = {
+            priority = {
                 "expected": 0,
                 "closingBooked": 1,
                 "interimBooked": 2,
@@ -453,11 +435,11 @@ class GoCardLessImporter(beangulp.Importer):
                 "openingBooked": 4,
             }
             if account.preferred_balance_type:
-                PRIORITY[account.preferred_balance_type] = -1
+                priority[account.preferred_balance_type] = -1
 
             # Sort balances based on priority, with unknown types at the end
             sorted_balances = sorted(
-                balances.balances, key=lambda b: PRIORITY.get(b.balance_type, 99)
+                balances.balances, key=lambda b: priority.get(b.balance_type, 99)
             )
 
             if sorted_balances:
