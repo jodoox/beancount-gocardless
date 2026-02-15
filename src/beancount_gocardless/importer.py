@@ -51,6 +51,8 @@ class GoCardlessImporter(beangulp.Importer):
         _client: GoCardless API client instance.
     """
 
+    NARRATION_SEPARATOR: str = " "
+
     DEFAULT_METADATA_FIELDS: Dict[str, str] = {
         "nordref": "transactionId",
         "creditorName": "creditorName",
@@ -225,9 +227,11 @@ class GoCardlessImporter(beangulp.Importer):
             parts.append(transaction.remittance_information_unstructured)
 
         if transaction.remittance_information_unstructured_array:
-            parts.append(" ".join(transaction.remittance_information_unstructured_array))
+            parts.append(
+                " ".join(transaction.remittance_information_unstructured_array)
+            )
 
-        narration = " ".join(parts)
+        narration = self.NARRATION_SEPARATOR.join(parts)
 
         return narration
 
@@ -329,12 +333,13 @@ class GoCardlessImporter(beangulp.Importer):
                 "Skipping transaction %s with no amount", transaction.transaction_id
             )
             return None
-        currency = transaction.transaction_amount.currency
-        if not currency and self.config:
-            currency = self.config.currency
+        currency = (
+            transaction.transaction_amount.currency
+            or (self.config.currency if self.config else "EUR")
+        )
         tx_amount = amount.Amount(
             D(str(transaction.transaction_amount.amount)),
-            currency or "EUR",
+            currency,
         )
 
         flag = self.get_transaction_status(
@@ -364,10 +369,12 @@ class GoCardlessImporter(beangulp.Importer):
     def extract(self, filepath: str, existing_entries: data.Entries = None) -> data.Entries:
         """Extract Beancount entries from GoCardless transactions.
 
+        Duplicate detection is handled by the beangulp base class using
+        :attr:`cmp`.
+
         Args:
             filepath: The path to the YAML configuration file.
-            existing_entries: Previously extracted Beancount entries used for
-                duplicate detection via :attr:`cmp`.
+            existing_entries: Previously extracted entries (used by the base class).
 
         Returns:
             A list of Beancount transaction entries.
@@ -499,23 +506,6 @@ class GoCardlessImporter(beangulp.Importer):
                     balance_amount,
                     balance_date,
                 )
-
-        # Deduplicate against existing entries
-        if existing_entries:
-            existing_txns = [
-                e for e in existing_entries if isinstance(e, data.Transaction)
-            ]
-            if existing_txns:
-                before = len(entries)
-                entries = [
-                    e
-                    for e in entries
-                    if not isinstance(e, data.Transaction)
-                    or not any(self.cmp(e, ex) for ex in existing_txns)
-                ]
-                dupes = before - len(entries)
-                if dupes:
-                    logger.info("Removed %d duplicate entries", dupes)
 
         logger.info(
             "Processed %d total transactions across %d accounts, created %d entries",
