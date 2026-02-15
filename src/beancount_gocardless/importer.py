@@ -333,9 +333,8 @@ class GoCardlessImporter(beangulp.Importer):
                 "Skipping transaction %s with no amount", transaction.transaction_id
             )
             return None
-        currency = (
-            transaction.transaction_amount.currency
-            or (self.config.currency if self.config else "EUR")
+        currency = transaction.transaction_amount.currency or (
+            self.config.currency if self.config else "EUR"
         )
         tx_amount = amount.Amount(
             D(str(transaction.transaction_amount.amount)),
@@ -366,7 +365,9 @@ class GoCardlessImporter(beangulp.Importer):
             ],
         )
 
-    def extract(self, filepath: str, existing_entries: data.Entries = None) -> data.Entries:
+    def extract(
+        self, filepath: str, existing_entries: data.Entries = None
+    ) -> data.Entries:
         """Extract Beancount entries from GoCardless transactions.
 
         Duplicate detection is handled by the beangulp base class using
