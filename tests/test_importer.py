@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import date
 from beancount.core import data
-from beancount_gocardless.importer import GoCardLessImporter
+from beancount_gocardless.importer import GoCardlessImporter
 from beancount_gocardless.models import (
     AccountBalance,
     BalanceAfterTransactionSchema,
@@ -16,7 +16,7 @@ from beancount_gocardless.models import (
 
 @pytest.fixture
 def importer():
-    imp = GoCardLessImporter()
+    imp = GoCardlessImporter()
     imp.config = Mock()
     imp.config.secret_id = "test_id"
     imp.config.secret_key = "test_key"

@@ -565,21 +565,6 @@ class Integration(BaseModel):
     identification_codes: Optional[List[str]] = None
 
 
-class IntegrationRetrieve(BaseModel):
-    """Integration retrieve response."""
-
-    id: str
-    name: str
-    bic: Optional[str] = None
-    transaction_total_days: str
-    max_access_valid_for_days: Optional[int] = None
-    countries: List[str]
-    logo: Optional[str] = None
-    supported_payments: Optional[Dict[str, Any]] = None
-    supported_features: Optional[List[str]] = None
-    identification_codes: Optional[List[str]] = None
-
-
 class AccountConfig(BaseModel):
     """Configuration for a single bank account in the importer YAML file.
 

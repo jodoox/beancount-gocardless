@@ -15,17 +15,16 @@ from .models import (
     AccountBalance,
     AccountDetail,
     AccountTransactions,
-    Institution,
-    Requisition,
+    AccountInfo,
     EndUserAgreement,
-    ReconfirmationRetrieve,
-    PaginatedRequisitionList,
-    PaginatedEndUserAgreementList,
+    Institution,
     Integration,
-    IntegrationRetrieve,
+    PaginatedEndUserAgreementList,
+    PaginatedRequisitionList,
+    ReconfirmationRetrieve,
+    Requisition,
     SpectacularJWTObtain,
     SpectacularJWTRefresh,
-    AccountInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -393,10 +392,10 @@ class GoCardlessClient:
         data = self.get("/integrations/")
         return [Integration(**integration) for integration in data]
 
-    def get_integration(self, integration_id: str) -> IntegrationRetrieve:
+    def get_integration(self, integration_id: str) -> Integration:
         """Retrieve a single integration by its ID."""
         data = self.get(f"/integrations/{integration_id}/")
-        return IntegrationRetrieve(**data)
+        return Integration(**data)
 
     # Paginated endpoints with full response models
     def get_requisitions_paginated(
@@ -452,8 +451,6 @@ class GoCardlessClient:
 
     def get_all_accounts(self) -> List[AccountInfo]:
         """Collect all accounts across all requisitions, with expiry metadata."""
-        from datetime import datetime, timedelta
-
         accounts = []
         for req in self.get_requisitions():
             for account_id in req.accounts:
