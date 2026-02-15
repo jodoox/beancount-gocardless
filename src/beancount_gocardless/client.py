@@ -5,6 +5,7 @@ caching (via requests-cache).
 """
 
 import logging
+import time
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime, timedelta
 import requests_cache
@@ -27,6 +28,8 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["GoCardlessClient"]
 
 
 def strip_headers_hook(response, *args, **kwargs):
@@ -84,6 +87,7 @@ class GoCardlessClient:
         self.secret_id = secret_id
         self.secret_key = secret_key
         self._token: Optional[str] = None
+        self._token_expires_at: float = 0.0
 
         # Default cache options that match the original client
         default_cache_options = {
@@ -145,27 +149,31 @@ class GoCardlessClient:
             "cache_key": cache_key,
         }
 
+    #: Seconds to subtract from token lifetime to account for clock skew.
+    _TOKEN_EXPIRY_BUFFER: int = 30
+
     @property
     def token(self) -> str:
-        """
-        Get or refresh access token.
-        """
-        if not self._token:
+        """Return a valid access token, refreshing if expired or missing."""
+        if not self._token or time.monotonic() >= self._token_expires_at:
             self.get_token()
         return self._token
 
     def get_token(self):
-        """
-        Fetch a new API access token using credentials.
-        """
+        """Fetch a new API access token using credentials."""
         logger.debug("Fetching new access token")
         response = requests.post(
             f"{self.BASE_URL}/token/new/",
             data={"secret_id": self.secret_id, "secret_key": self.secret_key},
         )
         response.raise_for_status()
-        self._token = response.json()["access"]
-        logger.debug("Access token obtained")
+        data = response.json()
+        self._token = data["access"]
+        expires_in = data.get("access_expires", 86400)
+        self._token_expires_at = (
+            time.monotonic() + expires_in - self._TOKEN_EXPIRY_BUFFER
+        )
+        logger.debug("Access token obtained, expires in %ds", expires_in)
 
     def _request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """Send an authenticated request, retrying once on 401 after token refresh."""
@@ -260,13 +268,23 @@ class GoCardlessClient:
 
         # Follow pagination links if present
         next_url = data.get("next")
+        page_num = 1
         while next_url:
+            page_num += 1
             # next_url is an absolute URL; strip the base to get the endpoint
             if next_url.startswith(self.BASE_URL):
                 endpoint = next_url[len(self.BASE_URL) :]
             else:
                 endpoint = next_url
-            page_data = self.get(endpoint)
+            try:
+                page_data = self.get(endpoint)
+            except Exception:
+                logger.exception(
+                    "Failed to fetch transaction page %d for account %s",
+                    page_num,
+                    account_id,
+                )
+                raise
             all_booked.extend(page_data.get("transactions", {}).get("booked", []))
             all_pending.extend(page_data.get("transactions", {}).get("pending", []))
             next_url = page_data.get("next")

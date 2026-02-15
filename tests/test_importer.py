@@ -203,12 +203,14 @@ def test_add_metadata_custom_fields(importer):
 
     metadata = importer.add_metadata(transaction, {}, config)
 
-    assert "ref" in metadata and metadata["ref"] == "TX123"
-    assert "payee" in metadata and metadata["payee"] == "Test Creditor"
-    assert "mcc" in metadata and metadata["mcc"] == "5411"
-    assert (
-        "ultimateCreditor" in metadata and metadata["ultimateCreditor"] == "Store Inc"
-    )
+    assert "ref" in metadata
+    assert metadata["ref"] == "TX123"
+    assert "payee" in metadata
+    assert metadata["payee"] == "Test Creditor"
+    assert "mcc" in metadata
+    assert metadata["mcc"] == "5411"
+    assert "ultimateCreditor" in metadata
+    assert metadata["ultimateCreditor"] == "Store Inc"
     # Note: defaults are also included unless excluded
     assert "debtorName" in metadata
     assert "bookingDate" in metadata
