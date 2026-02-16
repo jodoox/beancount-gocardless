@@ -22,6 +22,8 @@ from .mock_client import MockGoCardlessClient
 from .models import AccountInfo, Institution
 from .utils import load_dotenv
 
+__all__ = ["CLI", "main"]
+
 
 class CLI:
     """Interactive CLI for managing GoCardless bank connections."""

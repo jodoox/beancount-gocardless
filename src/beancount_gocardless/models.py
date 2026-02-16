@@ -4,9 +4,26 @@ Based on the GoCardless OpenAPI specification.
 """
 
 from typing import Optional, List, Dict, Any, TypedDict
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 from enum import Enum
+
+__all__ = [
+    "AccountBalance",
+    "AccountConfig",
+    "AccountDetail",
+    "AccountInfo",
+    "AccountTransactions",
+    "BankTransaction",
+    "EndUserAgreement",
+    "GoCardlessConfig",
+    "Institution",
+    "PaginatedEndUserAgreementList",
+    "PaginatedRequisitionList",
+    "Requisition",
+    "SpectacularJWTObtain",
+    "SpectacularJWTRefresh",
+]
 
 
 class AccountInfo(TypedDict, total=False):
@@ -21,6 +38,9 @@ class AccountInfo(TypedDict, total=False):
     name: Optional[str]
     requisition_id: str
     requisition_reference: str
+    requisition_status: str
+    access_valid_until: str
+    is_expired: bool
 
 
 class StatusEnum(str, Enum):
@@ -584,6 +604,7 @@ class AccountConfig(BaseModel):
     preferred_balance_type: Optional[str] = None
     exclude_default_metadata: List[str] = []
     metadata_fields: Optional[Dict[str, str]] = None
+    days_back: int = 180
 
     @field_validator("transaction_types")
     @classmethod
@@ -612,3 +633,17 @@ class GoCardlessConfig(BaseModel):
     currency: str = "EUR"
     cache_options: Dict[str, Any] = {}
     accounts: List[AccountConfig]
+
+    @model_validator(mode="after")
+    def _validate_secrets(self) -> "GoCardlessConfig":
+        if not self.secret_id or not self.secret_id.strip():
+            raise ValueError(
+                "secret_id is required; set it directly or via $ENV_VAR in the YAML config"
+            )
+        if not self.secret_key or not self.secret_key.strip():
+            raise ValueError(
+                "secret_key is required; set it directly or via $ENV_VAR in the YAML config"
+            )
+        if not self.accounts:
+            raise ValueError("at least one account must be configured")
+        return self

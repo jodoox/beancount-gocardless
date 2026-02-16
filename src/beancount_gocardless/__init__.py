@@ -9,5 +9,5 @@ from importlib.metadata import version
 from .client import GoCardlessClient
 from .importer import GoCardlessImporter
 
-__all__ = ["GoCardlessClient", "GoCardlessImporter"]
+__all__ = ["GoCardlessClient", "GoCardlessImporter", "__version__"]
 __version__ = version("beancount-gocardless")

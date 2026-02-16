@@ -20,6 +20,8 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["MockGoCardlessClient"]
+
 
 class MockGoCardlessClient(GoCardlessClient):
     """Mock client that returns synthetic demo data instead of making API calls."""

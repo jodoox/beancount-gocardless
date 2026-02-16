@@ -13,6 +13,8 @@ from .models import AccountConfig, BankTransaction, GoCardlessConfig
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["GoCardLessImporter", "ReferenceDuplicatesComparator"]
+
 
 class ReferenceDuplicatesComparator:
     """Compare two Beancount transactions for duplicate detection.
@@ -231,6 +233,13 @@ class GoCardlessImporter(beangulp.Importer):
                 " ".join(transaction.remittance_information_unstructured_array)
             )
 
+        if not parts:
+            logger.debug(
+                "Transaction %s has no remittance information fields; "
+                "narration will be empty",
+                transaction.transaction_id,
+            )
+
         narration = self.NARRATION_SEPARATOR.join(parts)
 
         return narration
@@ -395,8 +404,11 @@ class GoCardlessImporter(beangulp.Importer):
             asset_account = account.asset_account
             custom_metadata = account.metadata
 
+            days_back = getattr(account, "days_back", 180)
             logger.debug("Fetching transactions for account %s", account_id)
-            account_transactions = self.client.get_account_transactions(account_id)
+            account_transactions = self.client.get_account_transactions(
+                account_id, days_back=days_back
+            )
             transactions_dict = account_transactions.transactions
             all_transactions = self.get_all_transactions(
                 transactions_dict, account.transaction_types
