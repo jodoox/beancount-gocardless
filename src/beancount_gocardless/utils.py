@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+__all__ = ["load_dotenv"]
+
 
 def load_dotenv(dotenv_path: Optional[str] = None) -> None:
     """Load environment variables from a ``.env`` file.
