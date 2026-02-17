@@ -42,7 +42,6 @@ lint = [
 ]
 test = [
     "pytest",
-    "pytest-asyncio",
 ]
 
 [tool.uv]
