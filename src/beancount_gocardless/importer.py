@@ -13,7 +13,7 @@ from .models import AccountConfig, BankTransaction, GoCardlessConfig
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["GoCardLessImporter", "ReferenceDuplicatesComparator"]
+__all__ = ["GoCardlessImporter", "ReferenceDuplicatesComparator"]
 
 
 class ReferenceDuplicatesComparator:
