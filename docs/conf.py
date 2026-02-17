@@ -1,6 +1,6 @@
 import os
 import sys
-from importlib.metadata import version
+from importlib.metadata import version as get_version
 
 sys.path.insert(0, os.path.abspath("../src"))
 
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath("../src"))
 project = "beancount-gocardless"
 copyright = "2025, forgx1"
 author = "forgx1"
-release = version("beancount-gocardless")
+release = get_version("beancount-gocardless")
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
