@@ -59,8 +59,8 @@ class BalanceAmountSchema(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    amount: str = Field(default=None)
-    currency: str = Field(default=None)
+    amount: Optional[str] = Field(default=None)
+    currency: Optional[str] = Field(default=None)
 
 
 class BalanceSchema(BaseModel):
@@ -366,7 +366,7 @@ class AccountTransactions(BaseModel):
 
     transactions: Dict[str, List[BankTransaction]]  # booked and pending
     last_updated: Optional[str] = Field(
-        None, description="The last time the account transactions were updated"
+        default=None, description="The last time the account transactions were updated"
     )
 
 

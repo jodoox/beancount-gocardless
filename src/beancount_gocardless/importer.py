@@ -1,14 +1,14 @@
 import logging
 from datetime import date, timedelta
 from os import path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import beangulp
 import yaml
 from beancount.core import amount, data, flags
 from beancount.core.number import D
 
-from .client import GoCardlessClient
+from .client import GoCardlessClient, CacheOptions
 from .models import AccountConfig, BankTransaction, GoCardlessConfig
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,9 @@ class GoCardlessImporter(beangulp.Importer):
             self._client = GoCardlessClient(
                 self.config.secret_id,
                 self.config.secret_key,
-                cache_options=self.config.cache_options or None,
+                cache_options=cast(CacheOptions, self.config.cache_options)
+                if self.config.cache_options
+                else None,
             )
 
         return self._client
@@ -375,7 +377,9 @@ class GoCardlessImporter(beangulp.Importer):
         )
 
     def extract(
-        self, filepath: str, existing_entries: data.Entries = None
+        self,
+        filepath: str,
+        existing: data.Entries = None,  # type: ignore[assignment]
     ) -> data.Entries:
         """Extract Beancount entries from GoCardless transactions.
 
@@ -470,9 +474,11 @@ class GoCardlessImporter(beangulp.Importer):
 
             if sorted_balances:
                 selected_balance = sorted_balances[0]
+                currency = selected_balance.balance_amount.currency
+                assert currency is not None, "Currency should not be None"
                 balance_amount = amount.Amount(
                     D(str(selected_balance.balance_amount.amount)),
-                    selected_balance.balance_amount.currency,
+                    currency,
                 )
 
                 # Determine balance date

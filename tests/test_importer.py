@@ -58,7 +58,7 @@ def test_extract_balance_assertion_priority(importer):
         importer._client = mock_client
         importer.load_config = Mock()
 
-        entries = importer.extract("gocardless.yaml", existing_entries=[])
+        entries = importer.extract("gocardless.yaml", existing=[])
 
         # Should have one entry: the balance assertion
         balance_entries = [e for e in entries if isinstance(e, data.Balance)]
@@ -103,7 +103,7 @@ def test_extract_balance_assertion_multiple_distinct(importer):
         importer._client = mock_client
         importer.load_config = Mock()
 
-        entries = importer.extract("gocardless.yaml", existing_entries=[])
+        entries = importer.extract("gocardless.yaml", existing=[])
 
         balance_entries = [e for e in entries if isinstance(e, data.Balance)]
         assert len(balance_entries) == 1
@@ -145,7 +145,7 @@ def test_extract_balance_assertion_preferred(importer):
         # Set preferred balance type in config
         importer.config.accounts[0].preferred_balance_type = "interimAvailable"
 
-        entries = importer.extract("gocardless.yaml", existing_entries=[])
+        entries = importer.extract("gocardless.yaml", existing=[])
 
         balance_entries = [e for e in entries if isinstance(e, data.Balance)]
         assert len(balance_entries) == 1

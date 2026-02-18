@@ -6,7 +6,7 @@ caching (via requests-cache).
 
 import logging
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TypedDict, cast
 from datetime import date, datetime, timedelta
 import requests_cache
 import requests
@@ -58,6 +58,7 @@ RATE_LIMIT_BACKOFF_BASE = 1  # seconds
 
 __all__ = [
     "GoCardlessClient",
+    "CacheOptions",
     "strip_headers_hook",
     "ENDPOINT_TOKEN_NEW",
     "MAX_PAGINATION_PAGES",
@@ -93,6 +94,15 @@ def strip_headers_hook(response, *args, **kwargs):
     return response
 
 
+class CacheOptions(TypedDict, total=False):
+    cache_name: str
+    backend: str
+    expire_after: int
+    old_data_on_error: bool
+    match_headers: bool
+    cache_control: bool
+
+
 class GoCardlessClient:
     """GoCardless Bank Account Data API client.
 
@@ -117,7 +127,7 @@ class GoCardlessClient:
         self,
         secret_id: str,
         secret_key: str,
-        cache_options: Optional[Dict[str, Any]] = None,
+        cache_options: Optional[CacheOptions] = None,
     ):
         logger.info("Initializing GoCardlessClient")
         self.secret_id = secret_id
@@ -125,8 +135,7 @@ class GoCardlessClient:
         self._token: Optional[str] = None
         self._token_expires_at: float = 0.0
 
-        # Default cache options that match the original client
-        default_cache_options = {
+        default_cache_options: CacheOptions = {
             "cache_name": "gocardless",
             "backend": "sqlite",
             "expire_after": 0,
@@ -136,7 +145,7 @@ class GoCardlessClient:
         }
 
         # Merge with provided options
-        cache_config = {**default_cache_options, **(cache_options or {})}
+        cache_config: CacheOptions = {**default_cache_options, **(cache_options or {})}
         logger.debug("Cache config: %s", cache_config)
 
         # Create cached session; strip response headers to prevent cache bypasses
@@ -192,6 +201,7 @@ class GoCardlessClient:
         """Return a valid access token, refreshing if expired or missing."""
         if not self._token or time.monotonic() >= self._token_expires_at:
             self.get_token()
+        assert self._token is not None
         return self._token
 
     def get_token(self):
@@ -247,12 +257,13 @@ class GoCardlessClient:
         HTTP 429 (Too Many Requests). Uses the ``Retry-After`` header when
         available, otherwise falls back to exponential back-off.
         """
-        for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
+        attempt = 0
+        while True:
             response = self.session.request(method, url, headers=headers, **kwargs)
             if response.status_code != 429:
                 return response
-            if attempt == RATE_LIMIT_MAX_RETRIES:
-                return response  # return the 429 so caller can raise_for_status
+            if attempt >= RATE_LIMIT_MAX_RETRIES:
+                return response
             retry_after = response.headers.get("Retry-After")
             if retry_after is not None:
                 try:
@@ -268,7 +279,7 @@ class GoCardlessClient:
                 RATE_LIMIT_MAX_RETRIES,
             )
             time.sleep(wait)
-        return response  # pragma: no cover
+            attempt += 1
 
     def get(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
         """Send a GET request and return the JSON response body."""
@@ -381,7 +392,9 @@ class GoCardlessClient:
         """List available banking institutions, optionally filtered by country code."""
         logger.debug("Getting institutions for country %s", country)
         params = {"country": country} if country else {}
-        institutions_data = self.get(ENDPOINT_INSTITUTIONS, params=params)
+        institutions_data = cast(
+            List[Dict[str, Any]], self.get(ENDPOINT_INSTITUTIONS, params=params)
+        )
         logger.debug("Fetched %d institutions", len(institutions_data))
         return [Institution(**inst) for inst in institutions_data]
 
@@ -502,8 +515,8 @@ class GoCardlessClient:
     # Integration endpoints
     def get_integrations(self) -> List[Integration]:
         """List all integrations."""
-        data = self.get(ENDPOINT_INTEGRATIONS)
-        return [Integration(**integration) for integration in data]
+        data = cast(List[Dict[str, Any]], self.get(ENDPOINT_INTEGRATIONS))
+        return [Integration(**d) for d in data]
 
     def get_integration(self, integration_id: str) -> Integration:
         """Retrieve a single integration by its ID."""

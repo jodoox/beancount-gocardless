@@ -208,7 +208,7 @@ class CLI:
             self.console.print("[dim]No accounts found.[/dim]")
             return
 
-        account_map: dict[str, dict] = {}
+        account_map: dict[str, AccountInfo] = {}
         choices: list[str] = []
         for acc in accounts:
             iban = acc.get("iban", "no-iban")
