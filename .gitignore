@@ -173,3 +173,12 @@ cython_debug/
 
 # API spec files (regenerate from swagger.json)
 openapi.yaml
+
+# Private keys and secrets
+*.pem
+*.key
+.secrets/
+
+# User notes (not for package distribution)
+TODO.md
+demo

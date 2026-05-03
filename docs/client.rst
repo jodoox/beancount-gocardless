@@ -1,44 +1,58 @@
-API Client
-==========
+Providers
+=========
 
-The ``GoCardlessClient`` provides a typed interface to the GoCardless Bank Account Data API.
+Provider implementations live under ``beancount_openbanking.providers`` and
+normalize external APIs into a common account, balance, and transaction model.
 
-Features
---------
+Available providers:
 
-*   Requests and responses use Pydantic models for type safety.
-*   API responses can be cached locally via ``requests-cache`` (SQLite backend by default).
-*   Access tokens are acquired and refreshed automatically.
-*   Response headers (e.g. ``Cache-Control``) are stripped to prevent them from overriding ``requests-cache`` behavior, which would cause unnecessary re-fetching of cached data.
+* ``GoCardlessProvider``
+* ``EnableBankingProvider``
 
-Usage
------
+Shared protocol
+---------------
 
-Initialize the client with your credentials:
+Each provider implements:
+
+* ``ensure_session()``
+* ``list_accounts()``
+* ``get_balances(account_id)``
+* ``get_transactions(account_id, booked_from=None, booked_to=None)``
+
+GoCardless also exposes institution, requisition, and deletion helpers used by
+the CLI. Enable Banking also exposes bank listing, interactive authorization,
+session deletion, and multi-session helpers.
+
+Example
+-------
 
 .. code-block:: python
 
-    from beancount_gocardless import GoCardlessClient
+    from beancount_openbanking import GoCardlessProvider
 
-    client = GoCardlessClient(
+    provider = GoCardlessProvider(
         secret_id="your-secret-id",
         secret_key="your-secret-key",
-        cache_options={
-            "cache_name": "gocardless_cache",
-            "expire_after": 3600  # 1 hour
-        }
     )
 
-    # List banks in Great Britain
-    banks = client.list_banks("GB")
-
-    # Get all connected accounts
-    accounts = client.get_all_accounts()
+    accounts = provider.list_accounts()
+    balances = provider.get_balances("account-id")
+    transactions = provider.get_transactions("account-id")
 
 Reference
 ---------
 
-.. automodule:: beancount_gocardless.client
+.. automodule:: beancount_openbanking.providers.base
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: beancount_openbanking.providers.gocardless
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: beancount_openbanking.providers.enablebanking
    :members:
    :undoc-members:
    :show-inheritance:

@@ -1,211 +1,254 @@
-[![PyPI](https://img.shields.io/pypi/v/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
-[![Python versions](https://img.shields.io/pypi/pyversions/beancount-gocardless.svg?v=1)](https://pypi.org/project/beancount-gocardless/)
-[![License](https://img.shields.io/pypi/l/beancount-gocardless.svg)](https://pypi.org/project/beancount-gocardless/)
-[![Documentation Status](https://readthedocs.org/projects/beancount-gocardless/badge/?version=latest)](https://beancount-gocardless.readthedocs.io/en/latest/)
-[![Publish](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml/badge.svg)](https://github.com/jodoox/beancount-gocardless/actions/workflows/publish.yml)
+# beancount-openbanking
 
-# beancount-gocardless
+`beancount-openbanking` fetches bank data from supported open banking providers
+and emits Beancount directives through a shared normalized importer and CLI surface.
 
-Python client for the GoCardless Bank Account Data API (formerly Nordigen), with Pydantic models based on the OpenAPI spec, plus a Beancount importer.
+Today the project supports:
 
-Inspired by [beancounttools](https://github.com/tarioch/beancounttools).
+- GoCardless Bank Account Data
+- Enable Banking
 
-Documentation: https://beancount-gocardless.readthedocs.io/en/latest/
+## Why this project
 
-## Overview
+This project offers a practical Beancount import pipeline for open banking data.
 
-- **API Client** — Typed client with Pydantic models for all endpoints and data structures.
-- **CLI Tool** — Interactive terminal interface to manage bank connections.
-- **Beancount Importer** — A `beangulp` importer that fetches transactions and emits Beancount directives.
-- **Metadata Control** — Configurable metadata: exclude default fields, add custom fields via dotted paths.
+- One importer API across multiple providers.
+- Provider-specific CLIs for bank discovery, link creation, and session
+  inspection.
+- YAML configuration with `.env` expansion and config-relative paths.
+- Backward compatibility for existing `beancount_gocardless` users while the
+  multi-provider surface settles.
 
-## Installation
+## Status
+
+The project is still actively evolving - things may break.
+
+## Naming and compatibility
+
+The published distribution is still called `beancount-gocardless`, while the
+active Python package and primary CLI have already moved to the broader
+`beancount_openbanking` / `beancount-openbanking` names.
+
+- PyPI distribution: `beancount-gocardless`
+- Python package: `beancount_openbanking`
+- Primary multi-provider CLI: `beancount-openbanking`
+- Dedicated GoCardless helper CLI: `beancount-gocardless`
+- Dedicated Enable Banking helper CLI: `beancount-enablebanking`
+
+During the transition, imports and CLIs emit a warning about the planned rename.
+Set `BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING=1` to suppress it.
+
+## Install
 
 ```bash
 pip install beancount-gocardless
 ```
 
-## Prerequisites (credentials)
+## Quick start
 
-Create a GoCardless Bank Account Data account to get API credentials:
+1. Create a YAML config for your provider.
+2. Keep secrets in `.env`, `env_files` or inline in the YAML.
+3. Use the CLI to create or inspect bank links.
+4. List accounts and copy the provider account IDs into the config.
+5. Run the importer against your Beancount ledger.
 
-https://bankaccountdata.gocardless.com/overview/
-
-You will need:
-
-- `GOCARDLESS_SECRET_ID`
-- `GOCARDLESS_SECRET_KEY`
-
-## CLI Tool
-
-The CLI is interactive. It allows you to list banks, create authorization links, and view connected accounts.
-
-Set credentials as environment variables:
+Example:
 
 ```bash
-export GOCARDLESS_SECRET_ID="..."
-export GOCARDLESS_SECRET_KEY="..."
+beancount-gocardless --config gocardless.yaml
+beancount-openbanking gocardless --config gocardless.yaml accounts
+python my_import.py extract ./gocardless.yaml --existing ./ledger.bean
 ```
 
-Launch the tool:
+## Configuration
 
-```bash
-beancount-gocardless
-```
+Configuration files are YAML. String values may reference environment variables
+with `$VAR` or `${VAR}`.
 
-## Beancount Usage
+Expansion order:
 
-### 1) Create a YAML config
+1. nearest `.env` file found from the config directory upward
+2. files listed in `env_files`
+3. values in the top-level `env` mapping
+4. current process environment
 
-Create `gocardless.yaml`:
+Path fields in YAML are resolved relative to the YAML file. For Enable Banking
+that includes `private_key_path` and `session_store_path`.
+
+The generic importer expects an explicit `provider` field. The provider-specific
+CLIs (`beancount-gocardless` and `beancount-enablebanking`) infer it when
+loading a config, which keeps older single-provider configs working.
+
+### GoCardless config
 
 ```yaml
+provider: gocardless
+env_files:
+  - .env
+
 secret_id: $GOCARDLESS_SECRET_ID
 secret_key: $GOCARDLESS_SECRET_KEY
 
-# Note: this project substitutes environment variables in YAML values at runtime.
-
-cache_options: # if omitted, caching is disabled
-  cache_name: "gocardless"
-  backend: "sqlite"
-  expire_after: 3600
-  old_data_on_error: true
-
 accounts:
-  - id: "<REDACTED_UUID>"
+  - id: "<ACCOUNT_ID>"
     asset_account: "Assets:Banks:Revolut:Checking"
-    transaction_types: ["booked", "pending"] # optional, defaults to both
-    preferred_balance_type: "interimAvailable" # optional
+    booking_statuses: ["booked", "pending"]
 ```
 
-### 2) Create an import script
+### Enable Banking config
 
-Create `my.import`:
+```yaml
+provider: enablebanking
+env_files:
+  - .env
+
+application_id: $ENABLE_BANKING_APPLICATION_ID
+private_key_path: $ENABLE_BANKING_PRIVATE_KEY_PATH
+redirect_url: "http://127.0.0.1:8765/callback"
+session_store_path: ".secrets/enablebanking-sessions"
+
+accounts:
+  - id: "<ACCOUNT_UID>"
+    asset_account: "Assets:Banks:BNP:Checking"
+    booking_statuses: ["booked", "pending"]
+```
+
+`session_store_path` is a directory. Each Enable Banking authorization is stored
+as a separate JSON file inside it so multiple sessions can coexist.
+
+Per-account fields:
+
+- `id`: provider account identifier
+- `asset_account`: target Beancount account
+- `metadata`: static metadata added to emitted directives
+- `booking_statuses`: `booked` and/or `pending`
+- `preferred_balance_type`: preferred balance when several are returned
+- `exclude_default_metadata`: remove default metadata keys
+- `metadata_fields`: map output metadata keys to provider field paths
+- `days_back`: transaction lookback window
+
+Default metadata keys:
+
+- `ref`
+- `creditorName`
+- `debtorName`
+- `bookingDate`
+
+## Importer usage
 
 ```python
-#!/usr/bin/env python3
-
 import beangulp
-from beancount_gocardless import GoCardlessImporter
-from smart_importer import PredictPayees, PredictPostings
-
-importers = [
-    GoCardlessImporter(),
-]
-
-hooks = [
-    PredictPostings().hook,
-    PredictPayees().hook,
-]
+from beancount_openbanking import BankImporter
 
 if __name__ == "__main__":
-    ingest = beangulp.Ingest(importers, hooks=hooks)
+    ingest = beangulp.Ingest([BankImporter()])
     ingest()
 ```
 
-### 3) Run the import
+Run it with a provider config:
 
 ```bash
-python my.import extract ./gocardless.yaml --existing ./ledger.bean
+python my_import.py extract ./gocardless.yaml --existing ./ledger.bean
+python my_import.py extract ./enablebanking.yaml --existing ./ledger.bean
 ```
 
-## Customizing metadata
+If you want `identify()` to match a non-default config filename during
+interactive `beangulp` workflows, initialize the importer with that filename.
 
-### Via YAML configuration
+## CLI usage
 
-You can control metadata per account:
+List GoCardless banks:
 
-```yaml
-accounts:
-  - id: "<REDACTED_UUID>"
-    asset_account: "Assets:Banks:Revolut:Checking"
-
-    # Exclude specific default metadata fields.
-    exclude_default_metadata: ["bookingDate", "creditorName"]
-
-    # Add custom metadata fields using dotted paths.
-    metadata_fields:
-      payee: "creditorName"
-      cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
-      balanceType: "balanceAfterTransaction.balance_type"
+```bash
+beancount-openbanking gocardless --config gocardless.yaml banks --country FR --search bnp
 ```
 
-Supported options:
+Create a GoCardless bank link:
 
-- `exclude_default_metadata` (default: `[]`) - Exclude specific default metadata fields.
-  - Default fields include: `nordref`, `creditorName`, `debtorName`, `bookingDate`
-- `metadata_fields` (default: `null`) - Add or override metadata fields using dotted paths.
-  - Specify the output key as the dict key and the GoCardless path as the value.
-  - Example: `"cardScheme": "additionalDataStructured.cardInstrument.cardSchemeName"`
-
-### Example configurations
-
-**Use defaults with exclusions:**
-
-```yaml
-accounts:
-  - id: "<REDACTED_UUID>"
-    asset_account: "Assets:Banks:Revolut:Checking"
-    exclude_default_metadata: ["bookingDate"]  # Keep nordref, creditorName, debtorName
+```bash
+beancount-openbanking gocardless --config gocardless.yaml create-link \
+  --institution-id REVOLUT_REVOGB21 \
+  --reference revolut-main
 ```
 
-**Full customization with custom keys:**
+GoCardless helper CLI:
 
-```yaml
-accounts:
-  - id: "<REDACTED_UUID>"
-    asset_account: "Assets:Banks:Revolut:Checking"
-    exclude_default_metadata: []  # Keep all defaults
-    metadata_fields:
-      # Rename default field by using custom key name
-      payee: "creditorName"
-      # Add nested custom fields
-      cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
-      mcc: "merchant_category_code"
-      ultimateCreditor: "ultimate_creditor"
+```bash
+beancount-gocardless --config gocardless.yaml
+beancount-gocardless links
+beancount-gocardless create-link --institution-id REVOLUT_REVOGB21 --reference revolut-main
+beancount-gocardless delete-link --requisition-id <REQUISITION_ID>
 ```
 
-### Via subclassing
+List Enable Banking banks:
 
-For advanced customization, subclass `GoCardlessImporter` and override `add_metadata`:
-
-```python
-from beancount_gocardless import GoCardlessImporter
-
-class CustomImporter(GoCardlessImporter):
-    def add_metadata(self, transaction, custom_metadata, account_config=None):
-        metakv = super().add_metadata(transaction, custom_metadata, account_config)
-
-        if transaction.ultimate_creditor:
-            metakv["ultimateCreditor"] = transaction.ultimate_creditor
-        if transaction.merchant_category_code:
-            metakv["mcc"] = transaction.merchant_category_code
-        if transaction.bank_transaction_code:
-            metakv["bankCode"] = transaction.bank_transaction_code
-
-        return metakv
-
-importers = [CustomImporter()]
+```bash
+beancount-openbanking enablebanking --config enablebanking.yaml banks --country FR
 ```
 
-The `BankTransaction` model (see `models.py`) contains many optional fields you can expose as metadata, for example:
+Create an Enable Banking link:
 
-- `ultimate_creditor`, `ultimate_debtor`
-- `bank_transaction_code`, `proprietary_bank_transaction_code`
-- `merchant_category_code`, `creditor_id`, `mandate_id`
-- `entry_reference`, `account_servicer_reference`
+```bash
+beancount-openbanking enablebanking --config enablebanking.yaml create-link \
+  --country FR \
+  --aspsp-name "BNP Paribas"
+```
+
+List or delete Enable Banking sessions:
+
+```bash
+beancount-openbanking enablebanking --config enablebanking.yaml links
+beancount-openbanking enablebanking --config enablebanking.yaml delete-link \
+  --session-id <SESSION_ID>
+```
+
+Enable Banking helper CLI:
+
+```bash
+beancount-enablebanking --config enablebanking.yaml
+beancount-enablebanking links
+beancount-enablebanking accounts
+```
 
 ## Development
 
-### API coverage and models
+The repository uses `uv` for dependency management and packaging. `mise` tasks
+are provided as a small convenience layer for the common checks.
 
-The client covers the GoCardless Bank Account Data API with typed Pydantic models for all endpoints and data structures. Models are manually maintained from the OpenAPI/Swagger spec.
-
-### Local development
+Install the project with development dependencies:
 
 ```bash
-git clone https://github.com/jodoox/beancount-gocardless.git
-cd beancount-gocardless
-uv sync
-uv run pytest
+uv sync --extra test --extra lint --extra docs --extra typecheck
 ```
+
+Run the main checks:
+
+```bash
+uv run pytest -q
+uv run ruff check .
+uv run ty check src/
+uv run sphinx-build -b html docs docs/_build/html
+```
+
+Or use the bundled tasks:
+
+```bash
+mise run test
+mise run lint
+mise run typecheck
+mise run docs
+```
+
+## Repository layout
+
+- `src/beancount_openbanking/`: primary package, importer, CLI, providers
+- `src/beancount_gocardless/`: compatibility shim for the legacy package name
+- `tests/`: regression and provider behavior coverage
+- `docs/`: Sphinx documentation
+
+## More documentation
+
+- `docs/workflow.rst`: end-to-end usage flow
+- `docs/importer.rst`: config model and importer behavior
+- `docs/client.rst`: provider API surface
+- `docs/compatibility.rst`: naming and migration notes

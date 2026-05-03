@@ -1,360 +1,416 @@
-import pytest
-from unittest.mock import Mock, patch
+"""Tests for importer behavior and Beancount mapping."""
+
+from __future__ import annotations
+
 from datetime import date
-from beancount.core import data
-from beancount_gocardless.importer import GoCardlessImporter
-from beancount_gocardless.models import (
-    AccountBalance,
-    BalanceAfterTransactionSchema,
-    BalanceSchema,
-    BalanceAmountSchema,
-    BankTransaction,
-    TransactionAmountSchema,
-    AccountConfig,
+from unittest.mock import MagicMock, call, patch
+
+from beancount_openbanking.config import AccountConfig
+from beancount_openbanking.importer import BankImporter, MetadataRefComparator
+from beancount_openbanking.providers import (
+    Balance,
+    BookingStatus,
+    Transaction,
+    TransactionDirection,
 )
 
 
-@pytest.fixture
-def importer():
-    imp = GoCardlessImporter()
-    imp.config = Mock()
-    imp.config.secret_id = "test_id"
-    imp.config.secret_key = "test_key"
-    imp.config.cache_options = {}
+class TestBankImporterMetadata:
+    def test_add_metadata_basic(self) -> None:
+        importer = BankImporter()
+        transaction = Transaction(
+            transaction_id="tx-123",
+            entry_reference="ref-456",
+            booking_date="2024-01-15",
+            amount="-50.00",
+            currency="EUR",
+            booking_status=BookingStatus.BOOKED,
+            creditor_name="Test Creditor",
+            debtor_name="Test Debtor",
+        )
 
-    mock_account = Mock()
-    mock_account.id = "ACC1"
-    mock_account.asset_account = "Assets:Bank:Test"
-    mock_account.metadata = {"test": "meta"}
-    mock_account.transaction_types = ["booked"]
+        metadata = importer.add_metadata(transaction, {"custom": "value"})
 
-    imp.config.accounts = [mock_account]
-    return imp
+        assert metadata["ref"] == "tx-123"
+        assert metadata["creditorName"] == "Test Creditor"
+        assert metadata["debtorName"] == "Test Debtor"
+        assert metadata["bookingDate"] == "2024-01-15"
+        assert metadata["custom"] == "value"
+
+    def test_add_metadata_with_excludes(self) -> None:
+        importer = BankImporter()
+        transaction = Transaction(
+            transaction_id="tx-123",
+            booking_date="2024-01-15",
+            amount="-50.00",
+            currency="EUR",
+            booking_status=BookingStatus.BOOKED,
+            creditor_name="Test Creditor",
+            debtor_name="Test Debtor",
+        )
+        account_config = AccountConfig(
+            id="test",
+            asset_account="Assets:Banks:Test",
+            exclude_default_metadata=["bookingDate", "creditorName"],
+        )
+
+        metadata = importer.add_metadata(transaction, {}, account_config)
+
+        assert "bookingDate" not in metadata
+        assert "creditorName" not in metadata
+        assert metadata["debtorName"] == "Test Debtor"
+
+    def test_add_metadata_with_provider_path(self) -> None:
+        importer = BankImporter()
+        transaction = Transaction(
+            transaction_id="tx-123",
+            booking_date="2024-01-15",
+            amount="-50.00",
+            currency="EUR",
+            booking_status=BookingStatus.BOOKED,
+            provider_data={"merchantCategoryCode": "5411"},
+        )
+        account_config = AccountConfig(
+            id="test",
+            asset_account="Assets:Banks:Test",
+            metadata_fields={"mcc": "merchantCategoryCode"},
+        )
+
+        metadata = importer.add_metadata(transaction, {}, account_config)
+
+        assert metadata["mcc"] == "5411"
 
 
-def test_extract_balance_assertion_priority(importer):
-    """Test that balance assertion uses prioritized types."""
-    with patch("beancount_gocardless.importer.GoCardlessClient") as mock_client_cls:
-        mock_client = mock_client_cls.return_value
+class TestBankImporterHelpers:
+    def test_resolve_dotted_path(self) -> None:
+        importer = BankImporter()
+        transaction = Transaction(
+            transaction_id="tx-123",
+            amount="-50.00",
+            currency="EUR",
+            booking_status=BookingStatus.BOOKED,
+            provider_data={
+                "additionalDataStructured": {
+                    "cardInstrument": {"cardSchemeName": "VISA"}
+                }
+            },
+        )
 
-        # Mock transactions (empty)
-        mock_tx_resp = Mock()
-        mock_tx_resp.transactions = {"booked": []}
-        mock_client.get_account_transactions.return_value = mock_tx_resp
+        value = importer._resolve_transaction_field(
+            transaction, "additionalDataStructured.cardInstrument.cardSchemeName"
+        )
 
-        # Mock balances - no 'expected', but has 'interimAvailable'
-        mock_balances = AccountBalance(
-            balances=[
-                BalanceSchema(
-                    balance_amount=BalanceAmountSchema(amount="100.00", currency="EUR"),
-                    balance_type="interimAvailable",
-                    reference_date="2026-01-15",
+        assert value == "VISA"
+
+    def test_get_narration(self) -> None:
+        importer = BankImporter()
+        transaction = Transaction(
+            amount="0",
+            currency="EUR",
+            booking_status=BookingStatus.BOOKED,
+            remittance_information=["Payment", "Invoice 123"],
+        )
+
+        assert importer.get_narration(transaction) == "Payment Invoice 123"
+
+    def test_get_payee_uses_direction(self) -> None:
+        importer = BankImporter()
+        transaction = Transaction(
+            amount="-100.00",
+            currency="EUR",
+            direction=TransactionDirection.DEBIT,
+            booking_status=BookingStatus.BOOKED,
+            creditor_name="Creditor Corp",
+            debtor_name="Debtor Person",
+        )
+
+        assert importer.get_payee(transaction) == "Creditor Corp"
+
+    def test_filter_transactions_uses_booking_status(self) -> None:
+        importer = BankImporter()
+        booked = Transaction(
+            amount="10.00",
+            currency="EUR",
+            booking_date="2024-01-01",
+            booking_status=BookingStatus.BOOKED,
+        )
+        pending = Transaction(
+            amount="20.00",
+            currency="EUR",
+            booking_date="2024-01-02",
+            booking_status=BookingStatus.PENDING,
+        )
+
+        result = importer.filter_transactions([pending, booked], [BookingStatus.BOOKED])
+
+        assert result == [booked]
+
+
+class TestMetadataRefComparator:
+    def test_duplicate_detection_same_ref(self) -> None:
+        comparator = MetadataRefComparator(["ref"])
+
+        from beancount.core import data
+        from datetime import date as dt_date
+
+        entry1 = data.Transaction(
+            data.new_metadata("", 0, {"ref": "abc123"}),
+            dt_date(2024, 1, 1),
+            "*",
+            "",
+            "",
+            data.EMPTY_SET,
+            data.EMPTY_SET,
+            [],
+        )
+        entry2 = data.Transaction(
+            data.new_metadata("", 0, {"ref": "abc123"}),
+            dt_date(2024, 1, 1),
+            "*",
+            "",
+            "",
+            data.EMPTY_SET,
+            data.EMPTY_SET,
+            [],
+        )
+
+        assert comparator(entry1, entry2) is True
+
+
+class TestBankImporterCmp:
+    def test_cmp_defaults_to_ref(self) -> None:
+        importer = BankImporter()
+        assert importer.cmp.refs == ["ref"]
+
+    def test_cmp_auto_derives_from_default_metadata_fields(self) -> None:
+        class CustomImporter(BankImporter):
+            DEFAULT_METADATA_FIELDS = {
+                "nordref": "transaction_id",
+                "bookingDate": "booking_date",
+            }
+
+        importer = CustomImporter()
+        assert importer.cmp.refs == ["nordref"]
+
+    def test_explicit_cmp_override_takes_precedence(self) -> None:
+        class CustomImporter(BankImporter):
+            DEFAULT_METADATA_FIELDS = {"nordref": "transaction_id"}
+            cmp = MetadataRefComparator(["foo"])
+
+        importer = CustomImporter()
+        assert importer.cmp.refs == ["foo"]
+
+    def test_cmp_falls_back_to_ref_when_no_transaction_id_mapping(self) -> None:
+        class CustomImporter(BankImporter):
+            DEFAULT_METADATA_FIELDS = {"bookingDate": "booking_date"}
+
+        importer = CustomImporter()
+        assert importer.cmp.refs == ["ref"]
+
+
+class TestBankImporterAccount:
+    def test_account_returns_empty_string_when_config_has_no_accounts(self) -> None:
+        importer = BankImporter()
+        importer.config = MagicMock()
+        importer.config.accounts = []
+        assert importer.account("any-file.yaml") == ""
+
+    def test_account_returns_first_account_asset_account(self, tmp_path) -> None:
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text(
+            """
+provider: gocardless
+secret_id: test-id
+secret_key: test-key
+accounts:
+  - id: acc-1
+    asset_account: Assets:Banks:First
+  - id: acc-2
+    asset_account: Assets:Banks:Second
+""".strip()
+        )
+
+        importer = BankImporter()
+        account = importer.account(str(config_file))
+        assert account == "Assets:Banks:First"
+
+
+class TestBankImporterExtract:
+    def test_extract_sorts_entries_and_uses_account_days_back(self, tmp_path) -> None:
+        config_file = tmp_path / "gocardless.yaml"
+        config_file.write_text(
+            """
+provider: gocardless
+secret_id: test-id
+secret_key: test-key
+accounts:
+  - id: acc-2
+    asset_account: Assets:Banks:Second
+    metadata:
+      source: second
+    days_back: 10
+  - id: acc-1
+    asset_account: Assets:Banks:First
+    metadata:
+      source: first
+    days_back: 30
+""".strip()
+        )
+
+        provider = MagicMock()
+        provider.get_transactions.side_effect = lambda account_id, **_: {
+            "acc-1": [
+                Transaction(
+                    transaction_id="tx-1",
+                    booking_date="2024-01-15",
+                    amount="20.00",
+                    currency="EUR",
+                    direction=TransactionDirection.CREDIT,
+                    booking_status=BookingStatus.BOOKED,
+                    debtor_name="Employer",
+                    remittance_information=["Salary"],
                 )
-            ]
-        )
-        mock_client.get_account_balances.return_value = mock_balances
-
-        # We need to set the internal client to our mock
-        importer._client = mock_client
-        importer.load_config = Mock()
-
-        entries = importer.extract("gocardless.yaml", existing=[])
-
-        # Should have one entry: the balance assertion
-        balance_entries = [e for e in entries if isinstance(e, data.Balance)]
-        assert len(balance_entries) == 1
-        assert balance_entries[0].account == "Assets:Bank:Test"
-        assert balance_entries[0].amount.number == 100
-        # Date should be reference_date + 1 day
-        assert balance_entries[0].date == date(2026, 1, 16)
-        assert balance_entries[0].meta["test"] == "meta"
-        assert "interimAvailable: 100.00 EUR" in balance_entries[0].meta["detail"]
-
-
-def test_extract_balance_assertion_multiple_distinct(importer):
-    """Test that balance assertion shows all distinct balance values."""
-    with patch("beancount_gocardless.importer.GoCardlessClient") as mock_client_cls:
-        mock_client = mock_client_cls.return_value
-        mock_tx_resp = Mock()
-        mock_tx_resp.transactions = {"booked": []}
-        mock_client.get_account_transactions.return_value = mock_tx_resp
-
-        # Multiple balances with different values
-        mock_balances = AccountBalance(
-            balances=[
-                BalanceSchema(
-                    balance_amount=BalanceAmountSchema(amount="100.00", currency="EUR"),
-                    balance_type="expected",
-                    reference_date="2026-01-15",
-                ),
-                BalanceSchema(
-                    balance_amount=BalanceAmountSchema(amount="105.00", currency="EUR"),
-                    balance_type="interimAvailable",
-                    reference_date="2026-01-15",
-                ),
-                BalanceSchema(
-                    balance_amount=BalanceAmountSchema(amount="100.00", currency="EUR"),
+            ],
+            "acc-2": [
+                Transaction(
+                    transaction_id="tx-2",
+                    booking_date="2024-02-02",
+                    amount="-10.00",
+                    currency="EUR",
+                    direction=TransactionDirection.DEBIT,
+                    booking_status=BookingStatus.BOOKED,
+                    creditor_name="Coffee Shop",
+                    remittance_information=["Coffee"],
+                )
+            ],
+        }[account_id]
+        provider.get_balances.side_effect = lambda account_id: {
+            "acc-1": [
+                Balance(
+                    amount="200.00",
+                    currency="EUR",
                     balance_type="closingBooked",
-                    reference_date="2026-01-15",
-                ),
-            ]
+                    reference_date="2024-01-31",
+                )
+            ],
+            "acc-2": [
+                Balance(
+                    amount="90.00",
+                    currency="EUR",
+                    balance_type="closingBooked",
+                    reference_date="2024-02-02",
+                )
+            ],
+        }[account_id]
+
+        importer = BankImporter()
+        with (
+            patch(
+                "beancount_openbanking.importer.build_provider",
+                return_value=provider,
+            ),
+            patch.object(importer, "_today", return_value=date(2024, 2, 10)),
+        ):
+            entries = importer.extract(str(config_file))
+
+        assert [entry.date.isoformat() for entry in entries] == [
+            "2024-01-15",
+            "2024-02-01",
+            "2024-02-02",
+            "2024-02-03",
+        ]
+        assert entries[0].meta["source"] == "first"
+        assert entries[2].meta["source"] == "second"
+        assert provider.get_transactions.call_args_list == [
+            call(
+                "acc-2",
+                booked_from=date(2024, 1, 31),
+                booked_to=date(2024, 2, 10),
+            ),
+            call(
+                "acc-1",
+                booked_from=date(2024, 1, 11),
+                booked_to=date(2024, 2, 10),
+            ),
+        ]
+
+
+class TestTransactionFormatting:
+    """Tests for transaction entry formatting (regression tests for blank line bug)."""
+
+    def test_transaction_entry_has_no_blank_line_before_postings(self) -> None:
+        """Regression test: formatted transaction should not have blank lines before postings."""
+        from beancount.parser import printer
+        from beancount_openbanking.providers import BookingStatus
+
+        importer = BankImporter()
+        transaction = Transaction(
+            transaction_id="23383801094",
+            booking_date="2026-02-02",
+            amount="22.99",
+            currency="EUR",
+            booking_status=BookingStatus.BOOKED,
+            remittance_information=["Relevé différé Carte 4810********2321"],
         )
-        mock_client.get_account_balances.return_value = mock_balances
-        importer._client = mock_client
-        importer.load_config = Mock()
 
-        entries = importer.extract("gocardless.yaml", existing=[])
-
-        balance_entries = [e for e in entries if isinstance(e, data.Balance)]
-        assert len(balance_entries) == 1
-        assert balance_entries[0].amount.number == 100
-        # Detail should contain expected and interimAvailable, but NOT closingBooked (as it has same value as expected)
-        detail = balance_entries[0].meta["detail"]
-        assert "expected: 100.00 EUR" in detail
-        assert "interimAvailable: 105.00 EUR" in detail
-        assert "closingBooked" not in detail
-
-
-def test_extract_balance_assertion_preferred(importer):
-    """Test that balance assertion respects preferred_balance_type."""
-    with patch("beancount_gocardless.importer.GoCardlessClient") as mock_client_cls:
-        mock_client = mock_client_cls.return_value
-        mock_tx_resp = Mock()
-        mock_tx_resp.transactions = {"booked": []}
-        mock_client.get_account_transactions.return_value = mock_tx_resp
-
-        # Multiple balances, interimAvailable is preferred
-        mock_balances = AccountBalance(
-            balances=[
-                BalanceSchema(
-                    balance_amount=BalanceAmountSchema(amount="100.00", currency="EUR"),
-                    balance_type="expected",
-                    reference_date="2026-01-15",
-                ),
-                BalanceSchema(
-                    balance_amount=BalanceAmountSchema(amount="105.00", currency="EUR"),
-                    balance_type="interimAvailable",
-                    reference_date="2026-01-15",
-                ),
-            ]
+        entry = importer.create_transaction_entry(
+            transaction=transaction,
+            asset_account="Assets:Banque:Bourso:Joint:Checking",
+            custom_metadata={},
         )
-        mock_client.get_account_balances.return_value = mock_balances
-        importer._client = mock_client
-        importer.load_config = Mock()
 
-        # Set preferred balance type in config
-        importer.config.accounts[0].preferred_balance_type = "interimAvailable"
+        formatted = printer.format_entry(entry)
 
-        entries = importer.extract("gocardless.yaml", existing=[])
+        # Check that metadata line is followed directly by posting line (no blank line)
+        assert 'bookingDate: "2026-02-02"\n  Assets:' in formatted, (
+            f"Expected metadata followed by posting without blank line. Got:\n{formatted}"
+        )
 
-        balance_entries = [e for e in entries if isinstance(e, data.Balance)]
-        assert len(balance_entries) == 1
-        # Should use interimAvailable (105.00) even though expected (100.00) exists
-        assert balance_entries[0].amount.number == 105
-        assert "interimAvailable: 105.00 EUR" in balance_entries[0].meta["detail"]
+        # Ensure no double newlines before postings
+        assert "\n\n  Assets:" not in formatted, (
+            f"Found blank line before postings. Got:\n{formatted}"
+        )
 
+    def test_transaction_entry_with_two_postings_formatting(self) -> None:
+        """Test that transactions with multiple postings are formatted correctly."""
+        from beancount.core import data
+        from beancount.parser import printer
+        from datetime import date as dt_date
+        from beancount.core.amount import Amount
+        from beancount.core.number import D
 
-def test_add_metadata_exclude_specific_fields(importer):
-    """Test that specific default metadata fields can be excluded."""
-    transaction = BankTransaction(
-        transaction_id="TX123",
-        creditor_name="Test Creditor",
-        debtor_name="Test Debtor",
-        booking_date="2026-01-15",
-        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
-    )
+        meta = data.new_metadata("", 0, {"ref": "123", "bookingDate": "2026-02-02"})
+        entry = data.Transaction(
+            meta,
+            dt_date(2026, 2, 2),
+            "*",
+            "Relevé différé Carte 4810********2321",
+            "",
+            data.EMPTY_SET,
+            data.EMPTY_SET,
+            [
+                data.Posting(
+                    "Assets:Banque:Bourso:Joint:Checking",
+                    Amount(D("22.99"), "EUR"),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+                data.Posting(
+                    "Liabilities:Banque:Bourso:Joint:2321",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            ],
+        )
 
-    config = AccountConfig(
-        id="ACC1",
-        asset_account="Assets:Test",
-        exclude_default_metadata=["creditorName", "bookingDate"],
-    )
+        formatted = printer.format_entry(entry)
 
-    metadata = importer.add_metadata(transaction, {}, config)
-
-    assert metadata["nordref"] == "TX123"
-    assert metadata["debtorName"] == "Test Debtor"
-    assert "creditorName" not in metadata
-    assert "bookingDate" not in metadata
-
-
-def test_add_metadata_custom_fields(importer):
-    """Test that custom metadata fields can be added via metadata_fields."""
-    transaction = BankTransaction(
-        transaction_id="TX123",
-        creditor_name="Test Creditor",
-        debtor_name="Test Debtor",
-        booking_date="2026-01-15",
-        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
-        merchant_category_code="5411",
-        ultimate_creditor="Store Inc",
-    )
-
-    config = AccountConfig(
-        id="ACC1",
-        asset_account="Assets:Test",
-        metadata_fields={
-            "ref": "transactionId",
-            "payee": "creditorName",
-            "mcc": "merchant_category_code",
-            "ultimateCreditor": "ultimate_creditor",
-        },
-    )
-
-    metadata = importer.add_metadata(transaction, {}, config)
-
-    assert "ref" in metadata
-    assert metadata["ref"] == "TX123"
-    assert "payee" in metadata
-    assert metadata["payee"] == "Test Creditor"
-    assert "mcc" in metadata
-    assert metadata["mcc"] == "5411"
-    assert "ultimateCreditor" in metadata
-    assert metadata["ultimateCreditor"] == "Store Inc"
-    # Note: defaults are also included unless excluded
-    assert "debtorName" in metadata
-    assert "bookingDate" in metadata
-
-
-def test_add_metadata_custom_overrides_default(importer):
-    """Test that custom metadata overrides default metadata keys."""
-    transaction = BankTransaction(
-        transaction_id="TX123",
-        creditor_name="Test Creditor",
-        booking_date="2026-01-15",
-        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
-    )
-
-    config = AccountConfig(id="ACC1", asset_account="Assets:Test")
-    custom_meta = {"nordref": "CUSTOM123", "custom": "value"}
-
-    metadata = importer.add_metadata(transaction, custom_meta, config)
-
-    assert metadata["nordref"] == "CUSTOM123"
-    assert metadata["custom"] == "value"
-    assert metadata["creditorName"] == "Test Creditor"
-
-
-def test_add_metadata_without_account_config(importer):
-    """Test that default metadata is added when no account_config provided."""
-    transaction = BankTransaction(
-        transaction_id="TX123",
-        creditor_name="Test Creditor",
-        booking_date="2026-01-15",
-        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
-    )
-
-    metadata = importer.add_metadata(transaction, {}, None)
-
-    # Should include all default fields that have non-None values
-    assert metadata["nordref"] == "TX123"
-    assert metadata["creditorName"] == "Test Creditor"
-    assert metadata["bookingDate"] == "2026-01-15"
-    assert "debtorName" not in metadata  # debtorName is None, so excluded
-
-
-def test_add_metadata_flattens_nested_dicts(importer):
-    """Test that nested dicts are flattened to dotted paths via metadata_fields."""
-
-    transaction = BankTransaction(
-        transaction_id="TX123",
-        transaction_amount=TransactionAmountSchema(amount="100.00", currency="EUR"),
-        additional_data_structured={
-            "cardInstrument": {
-                "cardSchemeName": "MASTERCARD",
-                "name": "John Doe",
-                "identification": "1234",
-            }
-        },
-        balance_after_transaction=BalanceAfterTransactionSchema(
-            balance_amount=BalanceAmountSchema(amount="9.52", currency="EUR"),
-            balance_type="InterimBooked",
-        ),
-    )
-
-    config = AccountConfig(
-        id="ACC1",
-        asset_account="Assets:Test",
-        metadata_fields={
-            "additionalDataStructured.cardInstrument.cardSchemeName": "additionalDataStructured.cardInstrument.cardSchemeName",
-            "additionalDataStructured.cardInstrument.name": "additionalDataStructured.cardInstrument.name",
-            "additionalDataStructured.cardInstrument.identification": "additionalDataStructured.cardInstrument.identification",
-            "balanceAfterTransaction.balance_type": "balanceAfterTransaction.balance_type",
-            "balanceAfterTransaction.balance_amount.amount": "balanceAfterTransaction.balance_amount.amount",
-            "balanceAfterTransaction.balance_amount.currency": "balanceAfterTransaction.balance_amount.currency",
-        },
-    )
-
-    metadata = importer.add_metadata(transaction, {}, config)
-
-    # Check nested additionalDataStructured is flattened
-    assert (
-        metadata["additionalDataStructured.cardInstrument.cardSchemeName"]
-        == "MASTERCARD"
-    )
-    assert metadata["additionalDataStructured.cardInstrument.name"] == "John Doe"
-    assert metadata["additionalDataStructured.cardInstrument.identification"] == "1234"
-
-    # Check nested balanceAfterTransaction is flattened
-    assert metadata["balanceAfterTransaction.balance_type"] == "InterimBooked"
-    assert metadata["balanceAfterTransaction.balance_amount.amount"] == "9.52"
-    assert metadata["balanceAfterTransaction.balance_amount.currency"] == "EUR"
-
-    # Check default fields are also present
-    assert metadata["nordref"] == "TX123"
-
-
-def test_add_metadata_with_card_transaction_nested(importer):
-    """Test that custom fields can directly specify desired output keys."""
-    transaction = BankTransaction(
-        transaction_id="TX789",
-        transaction_amount=TransactionAmountSchema(amount="25.00", currency="EUR"),
-        additional_data_structured={
-            "cardInstrument": {
-                "cardSchemeName": "VISA",
-            }
-        },
-    )
-
-    config = AccountConfig(
-        id="ACC1",
-        asset_account="Assets:Test",
-        metadata_fields={
-            "card_scheme": "additionalDataStructured.cardInstrument.cardSchemeName",
-        },
-    )
-
-    metadata = importer.add_metadata(transaction, {}, config)
-
-    assert metadata["card_scheme"] == "VISA"
-    # Check defaults are also present
-    assert "nordref" in metadata
-
-
-def test_add_metadata_nested_with_exclude(importer):
-    """Test that specific nested keys can be excluded."""
-    transaction = BankTransaction(
-        transaction_id="TX999",
-        transaction_amount=TransactionAmountSchema(amount="75.00", currency="EUR"),
-        additional_data_structured={
-            "cardInstrument": {
-                "cardSchemeName": "AMEX",
-                "name": "Jane Doe",
-            }
-        },
-    )
-
-    config = AccountConfig(
-        id="ACC1",
-        asset_account="Assets:Test",
-        metadata_fields={
-            "additionalDataStructured.cardInstrument.cardSchemeName": "additionalDataStructured.cardInstrument.cardSchemeName",
-            "additionalDataStructured.cardInstrument.name": "additionalDataStructured.cardInstrument.name",
-        },
-        exclude_default_metadata=["additionalDataStructured.cardInstrument.name"],
-    )
-
-    metadata = importer.add_metadata(transaction, {}, config)
-
-    assert metadata["additionalDataStructured.cardInstrument.cardSchemeName"] == "AMEX"
-    assert "additionalDataStructured.cardInstrument.name" not in metadata
+        # Verify metadata is followed directly by first posting
+        assert 'bookingDate: "2026-02-02"\n  Assets:' in formatted
+        # Verify no blank lines within the transaction
+        assert "\n\n  " not in formatted

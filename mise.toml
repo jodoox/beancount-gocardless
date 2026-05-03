@@ -1,6 +1,8 @@
 [tasks]
 test = "uv sync --extra test && uv run pytest tests/ -v"
 lint = "uv sync --extra lint && uv run ruff check src/ tests/"
+typecheck = "uv sync --extra typecheck && uv run ty check"
+docs = "rm -rf docs/_build && uv sync --extra docs && uv run sphinx-build -b html docs docs/_build/html"
 fmt = "uv sync --extra lint && uv run ruff check src/ tests/ --fix"
 fmt-check = "uv sync --extra lint && uv run ruff check src/ tests/"
 build = "uv sync && uv build"

@@ -1,8 +1,9 @@
 import os
 import sys
-from importlib.metadata import version as get_version
+from importlib.metadata import PackageNotFoundError, version as get_version
 
 sys.path.insert(0, os.path.abspath("../src"))
+os.environ.setdefault("BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING", "1")
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -12,10 +13,15 @@ sys.path.insert(0, os.path.abspath("../src"))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "beancount-gocardless"
-copyright = "2025, forgx1"
-author = "forgx1"
-release = get_version("beancount-gocardless")
+project = "beancount-openbanking"
+copyright = "2025, jodoox"
+author = "jodoox"
+try:
+    release = get_version("beancount-gocardless")
+except PackageNotFoundError:
+    from beancount_openbanking import __version__
+
+    release = __version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

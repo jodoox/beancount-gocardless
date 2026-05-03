@@ -1,119 +1,126 @@
-Beancount Importer
-==================
+Importer
+========
 
-The ``GoCardlessImporter`` class is a ``beangulp.Importer`` that fetches transactions from the GoCardless API and converts them into Beancount directives.
+``BankImporter`` reads a provider-specific YAML file, fetches transactions and
+balances, and emits Beancount directives.
+
+Workflow
+--------
+
+The usual flow is:
+
+1. create a provider config file
+2. authorize or inspect accounts with the CLI
+3. add the provider account IDs to the config
+4. run the importer against your Beancount ledger
 
 Configuration
 -------------
 
-The importer is configured using a YAML file. This file contains your credentials, cache settings, and account mappings.
+Each config file must define:
+
+* ``provider``: ``gocardless`` or ``enablebanking``
+* ``accounts``: one or more account definitions
+
+The provider-specific CLIs can infer ``provider`` from the selected subcommand,
+which keeps older single-provider configs usable. The generic
+``BankImporter`` still expects it to be present.
+
+Optional top-level fields:
+
+* ``currency``: fallback currency if a transaction omits one
+* ``env_files``: dotenv files resolved relative to the YAML file
+* ``env``: inline values used during variable expansion
+
+Variable expansion supports ``$VAR`` and ``${VAR}`` in string values.
+Path fields are resolved relative to the YAML file. For Enable Banking this
+applies to ``private_key_path`` and ``session_store_path``.
+
+GoCardless example
+~~~~~~~~~~~~~~~~~~
 
 .. code-block:: yaml
 
-    # Credential injection (supported via environment variables)
+    provider: gocardless
+    env_files:
+      - .env
     secret_id: $GOCARDLESS_SECRET_ID
     secret_key: $GOCARDLESS_SECRET_KEY
 
-    # Optional caching configuration
-    cache_options:
-      cache_name: "gocardless"   # Default: "gocardless"
-      backend: "sqlite"          # Default: "sqlite"
-      expire_after: 3600         # Default: 0 (no cache)
-      old_data_on_error: true    # Default: true
-
-    # Account configuration
     accounts:
-      - id: "ACCOUNT_UUID_FROM_CLI"
-        asset_account: "Assets:Bank:MyAccount"
+      - id: "ACCOUNT_ID"
+        asset_account: "Assets:Banks:Checking"
+        booking_statuses: ["booked", "pending"]
+        preferred_balance_type: "interimAvailable"
 
-        # Optional settings
-        transaction_types: ["booked", "pending"]  # Default: ["booked", "pending"]
-        preferred_balance_type: "interimAvailable" # Default: checks expected, closingBooked, etc.
+Enable Banking example
+~~~~~~~~~~~~~~~~~~~~~~
 
-        # Metadata customization
-        exclude_default_metadata: ["bookingDate"]
-        metadata_fields:
-            payee: "creditorName"
-            cardScheme: "additionalDataStructured.cardInstrument.cardSchemeName"
+.. code-block:: yaml
 
-Configuration Options
-~~~~~~~~~~~~~~~~~~~~~
+    provider: enablebanking
+    env_files:
+      - .env
+    application_id: $ENABLE_BANKING_APPLICATION_ID
+    private_key_path: $ENABLE_BANKING_PRIVATE_KEY_PATH
+    redirect_url: "http://127.0.0.1:8765/callback"
+    session_store_path: ".secrets/enablebanking-sessions"
 
-**Global Settings:**
+    accounts:
+      - id: "ACCOUNT_UID"
+        asset_account: "Assets:Banks:Checking"
+        booking_statuses: ["booked", "pending"]
+        preferred_balance_type: "CLOSING"
 
-*   **secret_id**: Your GoCardless Secret ID.
-*   **secret_key**: Your GoCardless Secret Key.
-*   **cache_options**: Dictionary of settings for `requests-cache`.
+Per-account fields
+------------------
 
-**Account Settings:**
+* ``id``: provider account identifier
+* ``asset_account``: target Beancount account
+* ``metadata``: static metadata added to emitted directives
+* ``booking_statuses``: ``booked`` and/or ``pending``
+* ``preferred_balance_type``: preferred balance when several are returned
+* ``exclude_default_metadata``: remove default metadata keys
+* ``metadata_fields``: map output metadata keys to provider field paths
+* ``days_back``: lookback window for transactions
 
-*   **id**: The GoCardless Account ID (UUID). Retrieve this using the CLI (`beancount-gocardless list_accounts`).
-*   **asset_account**: The Beancount account name to associate with these transactions (e.g., `Assets:Banks:Checking`).
-*   **transaction_types**: List of transaction statuses to import. Options: ``booked``, ``pending``.
-*   **preferred_balance_type**: The balance type to use for balance assertions. Common values: ``expected``, ``interimAvailable``, ``closingBooked``.
-*   **exclude_default_metadata**: List of default metadata keys to exclude (e.g., ``nordref``, ``creditorName``).
-*   **metadata_fields**: Dictionary mapping custom metadata keys to fields in the GoCardless API response (supports dotted paths).
+For Enable Banking, ``session_store_path`` is a directory rather than a single
+JSON file. Each authorized session is stored as a separate JSON document inside
+that directory.
+
+Default metadata keys
+---------------------
+
+* ``ref``
+* ``creditorName``
+* ``debtorName``
+* ``bookingDate``
 
 Usage
 -----
 
-Create a Python script to run the import. This is standard for ``beangulp`` importers.
-
-**Basic Usage:**
+Minimal ``beangulp`` script:
 
 .. code-block:: python
 
     import beangulp
-    from beancount_gocardless import GoCardlessImporter
-
-    importer = GoCardlessImporter()
+    from beancount_openbanking import BankImporter
 
     if __name__ == "__main__":
-        ingest = beangulp.Ingest([importer])
+        ingest = beangulp.Ingest([BankImporter()])
         ingest()
 
-**With Smart Importer:**
-
-If you use ``smart_importer`` to predict payees and accounts:
-
-.. code-block:: python
-
-    import beangulp
-    from beancount_gocardless import GoCardlessImporter
-    from smart_importer import PredictPostings, PredictPayees
-
-    importer = GoCardlessImporter()
-
-    hooks = [
-        PredictPostings().hook,
-        PredictPayees().hook,
-    ]
-
-    if __name__ == "__main__":
-        ingest = beangulp.Ingest([importer], hooks=hooks)
-        ingest()
-
-**Running the Import:**
+Run it:
 
 .. code-block:: bash
 
-    python my_import.py extract config.yaml
-
-Extensibility
--------------
-
-You can subclass ``GoCardlessImporter`` to customize behavior by overriding the following methods:
-
-*   ``get_payee(transaction)`` — Return the payee string.
-*   ``get_narration(transaction)`` — Return the narration string.
-*   ``get_transaction_date(transaction)`` — Return the transaction date.
-*   ``add_metadata(transaction, ...)`` — Return a dictionary of metadata key-value pairs.
-*   ``create_transaction_entry(...)`` — Full control over Beancount entry creation.
+    python my_import.py extract ./gocardless.yaml --existing ./ledger.bean
+    python my_import.py extract ./enablebanking.yaml --existing ./ledger.bean
 
 Reference
 ---------
 
-.. automodule:: beancount_gocardless.importer
+.. automodule:: beancount_openbanking.importer
    :members:
    :undoc-members:
    :show-inheritance:

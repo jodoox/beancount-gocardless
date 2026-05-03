@@ -1,356 +1,360 @@
-"""
-Tests for the CLI module.
+"""Tests for the CLI entry points."""
 
-These tests use mocks to simulate user interactions with questionary
-and the GoCardless client. No real API calls are made.
-"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import Mock, patch
-from beancount_gocardless.cli import CLI
+from beancount_openbanking.providers import (
+    EnableBankingAspsp,
+    EnableBankingSession,
+    GoCardlessProvider,
+    Requisition,
+)
 
 
-@pytest.fixture
-def mock_cli():
-    """Create a CLI instance with mock client."""
-    cli = CLI(
-        secret_id="mock-id",
-        secret_key="mock-key",
-        mock=True,
-    )
-    return cli
+class TestCLI:
+    def test_installed_primary_cli_entry_point(self) -> None:
+        executable = shutil.which("beancount-openbanking")
+        assert executable is not None
+        env = {**os.environ, "BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING": "0"}
 
-
-def test_cli_init_mock():
-    """Test CLI initialization with mock client."""
-    cli = CLI(
-        secret_id="mock-id",
-        secret_key="mock-key",
-        mock=True,
-    )
-    assert cli.mock is True
-    assert cli.client is not None
-
-
-def test_cli_init_missing_creds():
-    """Test CLI fails without credentials in non-mock mode."""
-    with patch.dict("os.environ", {}, clear=True):
-        with pytest.raises(SystemExit) as exc:
-            CLI(mock=False)
-        assert exc.value.code == 1
-
-
-def test_list_accounts_no_accounts(mock_cli):
-    """Test list_accounts when no accounts exist."""
-    mock_cli.client.list_accounts = Mock(return_value=[])
-
-    with patch("beancount_gocardless.cli.questionary.select") as mock_select:
-        mock_select.return_value.ask.return_value = None
-        mock_cli.list_accounts_interactive()
-
-
-def test_list_accounts_with_accounts(mock_cli):
-    """Test list_accounts with accounts."""
-    accounts = [
-        {
-            "id": "ACC1",
-            "name": "Test Account",
-            "iban": "GB123",
-            "institution_id": "BANK1",
-            "requisition_reference": "ref1",
-        }
-    ]
-    mock_cli.client.list_accounts = Mock(return_value=accounts)
-
-    with (
-        patch("beancount_gocardless.cli.questionary.select") as mock_select,
-    ):
-        mock_select.return_value.ask.return_value = "BANK1 - Test Account (GB123)"
-        mock_cli.list_accounts_interactive()
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-def test_show_account_menu_view_balance(mock_select, mock_cli):
-    """Test _show_account_menu with view balance action."""
-    account = {
-        "id": "ACC1",
-        "name": "Test Account",
-        "iban": "GB123",
-        "institution_id": "BANK1",
-        "requisition_reference": "ref1",
-    }
-
-    mock_balance = Mock()
-    mock_balance.balances = [
-        Mock(
-            balance_type="closingAvailable",
-            balance_amount=Mock(amount="100.00", currency="GBP"),
+        result = subprocess.run(
+            [executable, "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
         )
-    ]
-    mock_cli.client.get_account_balances = Mock(return_value=mock_balance)
-    mock_select.return_value.ask.return_value = "balance"
 
-    mock_cli._show_account_menu(account)
-
-    mock_cli.client.get_account_balances.assert_called_once_with("ACC1")
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-@patch("beancount_gocardless.cli.questionary.confirm")
-def test_show_account_menu_delete_link(mock_confirm, mock_select, mock_cli):
-    """Test _show_account_menu with delete action."""
-    account = {
-        "id": "ACC1",
-        "name": "Test Account",
-        "iban": "GB123",
-        "institution_id": "BANK1",
-        "requisition_reference": "ref1",
-    }
-
-    mock_select.return_value.ask.return_value = "delete"
-    mock_confirm.return_value.ask.return_value = True
-
-    mock_req = Mock()
-    mock_req.id = "REQ1"
-    mock_cli.client.find_requisition_by_reference = Mock(return_value=mock_req)
-    mock_cli.client.delete_requisition = Mock()
-
-    mock_cli._show_account_menu(account)
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-def test_show_account_menu_back(mock_select, mock_cli):
-    """Test _show_account_menu with back action."""
-    account = {
-        "id": "ACC1",
-        "name": "Test Account",
-        "iban": "GB123",
-        "institution_id": "BANK1",
-        "requisition_reference": "ref1",
-    }
-
-    mock_select.return_value.ask.return_value = "back"
-    mock_cli._show_account_menu(account)
-
-
-def test_view_balance_success(mock_cli):
-    """Test _view_balance with successful response."""
-    mock_balance = Mock()
-    mock_balance.balances = [
-        Mock(
-            balance_type="closingAvailable",
-            balance_amount=Mock(amount="100.00", currency="GBP"),
-        ),
-        Mock(
-            balance_type="openingBooked",
-            balance_amount=Mock(amount="50.00", currency="GBP"),
-        ),
-    ]
-    mock_cli.client.get_account_balances = Mock(return_value=mock_balance)
-
-    mock_cli._view_balance("ACC1")
-
-    mock_cli.client.get_account_balances.assert_called_once_with("ACC1")
-
-
-def test_view_balance_error(mock_cli):
-    """Test _view_balance with error response."""
-    mock_cli.client.get_account_balances = Mock(side_effect=Exception("API Error"))
-
-    mock_cli._view_balance("ACC1")
-
-    mock_cli.client.get_account_balances.assert_called_once_with("ACC1")
-
-
-@patch("beancount_gocardless.cli.questionary.confirm")
-def test_delete_link_success(mock_confirm, mock_cli):
-    """Test _delete_link with successful deletion."""
-    cli = CLI(
-        secret_id="test-id",
-        secret_key="test-key",
-        mock=False,
-    )
-
-    mock_req = Mock()
-    mock_req.id = "REQ1"
-    cli.client.find_requisition_by_reference = Mock(return_value=mock_req)
-    cli.client.delete_requisition = Mock()
-
-    mock_confirm.return_value.ask.return_value = True
-
-    cli._delete_link("ref1")
-
-    cli.client.find_requisition_by_reference.assert_called_once_with("ref1")
-    cli.client.delete_requisition.assert_called_once_with("REQ1")
-
-
-@patch("beancount_gocardless.cli.questionary.confirm")
-def test_delete_link_cancelled(mock_confirm, mock_cli):
-    """Test _delete_link when user cancels."""
-    cli = CLI(
-        secret_id="test-id",
-        secret_key="test-key",
-        mock=False,
-    )
-
-    mock_confirm.return_value.ask.return_value = False
-
-    cli._delete_link("ref1")
-
-
-def test_delete_link_mock_mode(mock_cli):
-    """Test _delete_link shows error in mock mode."""
-    mock_cli._delete_link("ref1")
-
-
-@patch("beancount_gocardless.cli.questionary.autocomplete")
-def test_select_country(mock_autocomplete, mock_cli):
-    """Test _select_country with common country."""
-    mock_autocomplete.return_value.ask.return_value = "France"
-
-    result = mock_cli._select_country()
-
-    assert result == "FR"
-
-
-@patch("beancount_gocardless.cli.questionary.autocomplete")
-@patch("beancount_gocardless.cli.questionary.text")
-def test_select_country_other(mock_text, mock_autocomplete, mock_cli):
-    """Test _select_country with 'other' option."""
-    mock_autocomplete.return_value.ask.return_value = "Other (enter code)"
-    mock_text.return_value.ask.return_value = "US"
-
-    result = mock_cli._select_country()
-
-    assert result == "US"
-
-
-@patch("beancount_gocardless.cli.questionary.autocomplete")
-def test_select_country_back(mock_autocomplete, mock_cli):
-    """Test _select_country with back option."""
-    mock_autocomplete.return_value.ask.return_value = None
-
-    result = mock_cli._select_country()
-
-    assert result is None
-
-
-@patch("beancount_gocardless.cli.questionary.autocomplete")
-def test_select_bank(mock_autocomplete, mock_cli):
-    """Test _select_bank with institutions."""
-    mock_inst = Mock()
-    mock_inst.name = "Test Bank"
-    mock_inst.bic = "TESTBIC"
-    mock_inst.id = "BANK1"
-    mock_cli.client.get_institutions = Mock(return_value=[mock_inst])
-
-    mock_autocomplete.return_value.ask.return_value = "Test Bank (BIC: TESTBIC)"
-
-    result = mock_cli._select_bank("FR")
-
-    assert result == mock_inst
-    mock_cli.client.get_institutions.assert_called_once_with("FR")
-
-
-def test_select_bank_no_institutions(mock_cli):
-    """Test _select_bank when no institutions found."""
-    mock_cli.client.get_institutions = Mock(return_value=[])
-
-    result = mock_cli._select_bank("XX")
-
-    assert result is None
-
-
-def test_select_bank_error(mock_cli):
-    """Test _select_bank with API error."""
-    mock_cli.client.get_institutions = Mock(side_effect=Exception("API Error"))
-
-    result = mock_cli._select_bank("FR")
-
-    assert result is None
-
-
-def test_create_bank_link_success():
-    """Test _create_bank_link with successful creation."""
-    cli = CLI(
-        secret_id="test-id",
-        secret_key="test-key",
-        mock=False,
-    )
-
-    cli.client.find_requisition_by_reference = Mock(return_value=None)
-    cli.client.create_bank_link = Mock(return_value="http://auth-link.com")
-
-    cli._create_bank_link("my-ref", "BANK1")
-
-    cli.client.find_requisition_by_reference.assert_called_once_with("my-ref")
-    cli.client.create_bank_link.assert_called_once_with("my-ref", "BANK1")
-
-
-def test_create_bank_link_already_exists():
-    """Test _create_bank_link when reference already exists."""
-    cli = CLI(
-        secret_id="test-id",
-        secret_key="test-key",
-        mock=False,
-    )
-
-    mock_req = Mock()
-    cli.client.find_requisition_by_reference = Mock(return_value=mock_req)
-
-    cli._create_bank_link("my-ref", "BANK1")
-
-    cli.client.find_requisition_by_reference.assert_called_once_with("my-ref")
-
-
-def test_create_bank_link_error():
-    """Test _create_bank_link with API error."""
-    cli = CLI(
-        secret_id="test-id",
-        secret_key="test-key",
-        mock=False,
-    )
-
-    cli.client.find_requisition_by_reference = Mock(side_effect=Exception("API Error"))
-
-    cli._create_bank_link("my-ref", "BANK1")
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-def test_add_account_mock_mode(mock_select, mock_cli):
-    """Test add_account_interactive shows error in mock mode."""
-    mock_cli.add_account_interactive()
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-@patch("beancount_gocardless.cli.questionary.text")
-def test_run_exit(mock_text, mock_select, mock_cli):
-    """Test run method with exit choice."""
-    mock_select.return_value.ask.return_value = "exit"
-
-    mock_cli.run()
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-def test_run_list_accounts(mock_select, mock_cli):
-    """Test run method with list accounts choice."""
-    mock_select.return_value.ask.side_effect = ["list", "exit"]
-
-    mock_cli.list_accounts_interactive = Mock()
-
-    mock_cli.run()
-
-    mock_cli.list_accounts_interactive.assert_called_once()
-
-
-@patch("beancount_gocardless.cli.questionary.select")
-@patch("beancount_gocardless.cli.questionary.text")
-def test_run_add_account(mock_text, mock_select, mock_cli):
-    """Test run method with add account choice."""
-    mock_select.return_value.ask.side_effect = ["add", "exit"]
-
-    mock_cli.add_account_interactive = Mock()
-
-    mock_cli.run()
-
-    mock_cli.add_account_interactive.assert_called_once()
+        assert result.returncode == 0
+        assert "Open banking CLI for bank link creation and provider inspection" in (
+            result.stdout
+        )
+        assert "rename to 'beancount-openbanking' is planned" in result.stderr
+
+    def test_installed_gocardless_cli_entry_point(self) -> None:
+        executable = shutil.which("beancount-gocardless")
+        assert executable is not None
+        env = {**os.environ, "BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING": "0"}
+
+        result = subprocess.run(
+            [executable, "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        assert result.returncode == 0
+        assert "Dedicated GoCardless CLI" in result.stdout
+        assert "rename to 'beancount-openbanking' is planned" in result.stderr
+
+    def test_main_without_subcommand_in_non_interactive_mode(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.cli")
+        exit_code = cli_module.main([])
+
+        captured = capsys.readouterr()
+        assert exit_code == 1
+        assert (
+            "Open banking CLI for bank link creation and provider inspection"
+            in captured.out
+        )
+
+    def test_gocardless_links_command(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.cli")
+        provider = MagicMock(spec=GoCardlessProvider)
+        provider.list_requisitions.return_value = [
+            Requisition(
+                id="req-1",
+                created="2024-01-01T12:00:00Z",
+                redirect="http://localhost",
+                status="LN",
+                institution_id="REVOLUT_REVOGB21",
+                reference="revolut",
+                accounts=["acc-1"],
+                link="https://example.com/auth",
+            )
+        ]
+
+        with patch(
+            "beancount_openbanking.cli.build_gocardless_provider",
+            return_value=provider,
+        ):
+            exit_code = cli_module.main(
+                [
+                    "gocardless",
+                    "--secret-id",
+                    "test-id",
+                    "--secret-key",
+                    "test-key",
+                    "links",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert "revolut" in captured.out
+
+    def test_dedicated_gocardless_cli_without_subcommand(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.gocardless_cli")
+        with (
+            patch(
+                "beancount_openbanking.gocardless_cli.sys.stdin.isatty",
+                return_value=False,
+            ),
+            patch(
+                "beancount_openbanking.gocardless_cli.build_gocardless_provider",
+            ),
+        ):
+            exit_code = cli_module.main(
+                ["--secret-id", "test-id", "--secret-key", "test-key"]
+            )
+
+        captured = capsys.readouterr()
+        assert exit_code == 1
+        assert "Dedicated GoCardless CLI" in captured.out
+
+    def test_dedicated_gocardless_links_command(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.gocardless_cli")
+        provider = MagicMock(spec=GoCardlessProvider)
+        provider.list_requisitions.return_value = [
+            Requisition(
+                id="req-1",
+                created="2024-01-01T12:00:00Z",
+                redirect="http://localhost",
+                status="LN",
+                institution_id="REVOLUT_REVOGB21",
+                reference="revolut",
+                accounts=["acc-1"],
+                link="https://example.com/auth",
+            )
+        ]
+
+        with patch(
+            "beancount_openbanking.gocardless_cli.build_gocardless_provider",
+            return_value=provider,
+        ):
+            exit_code = cli_module.main(
+                [
+                    "--secret-id",
+                    "test-id",
+                    "--secret-key",
+                    "test-key",
+                    "links",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert "revolut" in captured.out
+
+    def test_dedicated_gocardless_config_infers_provider(self, tmp_path) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.gocardless_cli")
+        config_file = tmp_path / "gocardless.yaml"
+        config_file.write_text(
+            """
+secret_id: test-id
+secret_key: test-key
+accounts:
+  - id: test-account
+    asset_account: Assets:Banks:Test
+""".strip()
+        )
+
+        captured: dict[str, object] = {}
+
+        def fake_list_links(self) -> None:
+            captured["provider_name"] = self.provider.secret_id
+
+        with patch.object(
+            cli_module.GoCardlessOperations,
+            "list_links",
+            fake_list_links,
+        ):
+            exit_code = cli_module.main(["--config", str(config_file), "links"])
+
+        assert exit_code == 0
+        assert captured["provider_name"] == "test-id"
+
+    def test_installed_enablebanking_cli_entry_point(self) -> None:
+        executable = shutil.which("beancount-enablebanking")
+        assert executable is not None
+        env = {**os.environ, "BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING": "0"}
+
+        result = subprocess.run(
+            [executable, "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        assert result.returncode == 0
+        assert "Dedicated Enable Banking CLI" in result.stdout
+        assert "rename to 'beancount-openbanking' is planned" in result.stderr
+
+    def test_enablebanking_links_command(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.cli")
+        provider = MagicMock()
+        provider.list_sessions.return_value = [
+            EnableBankingSession(
+                session_id="sess-1",
+                aspsp=EnableBankingAspsp(name="Revolut", country="FR"),
+                accounts=["acc-1"],
+                status="AUTHORIZED",
+                authorized="2024-01-01T12:00:00Z",
+            )
+        ]
+
+        with patch(
+            "beancount_openbanking.cli.build_enablebanking_provider",
+            return_value=provider,
+        ):
+            exit_code = cli_module.main(
+                [
+                    "enablebanking",
+                    "--application-id",
+                    "test-app",
+                    "--private-key-path",
+                    "/path/to/key.pem",
+                    "links",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert "Revolut" in captured.out
+
+    def test_dedicated_enablebanking_cli_without_subcommand(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.enablebanking_cli")
+        with (
+            patch(
+                "beancount_openbanking.enablebanking_cli.sys.stdin.isatty",
+                return_value=False,
+            ),
+            patch(
+                "beancount_openbanking.enablebanking_cli.build_enablebanking_provider",
+            ),
+        ):
+            exit_code = cli_module.main(
+                [
+                    "--application-id",
+                    "test-app",
+                    "--private-key-path",
+                    "/path/to/key.pem",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exit_code == 1
+        assert "Dedicated Enable Banking CLI" in captured.out
+
+    def test_dedicated_enablebanking_links_command(self, capsys) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.enablebanking_cli")
+        provider = MagicMock()
+        provider.list_sessions.return_value = [
+            EnableBankingSession(
+                session_id="sess-1",
+                aspsp=EnableBankingAspsp(name="Hello Bank", country="FR"),
+                accounts=["acc-1"],
+                status="AUTHORIZED",
+                authorized="2024-01-01T12:00:00Z",
+            )
+        ]
+
+        with patch(
+            "beancount_openbanking.enablebanking_cli.build_enablebanking_provider",
+            return_value=provider,
+        ):
+            exit_code = cli_module.main(
+                [
+                    "--application-id",
+                    "test-app",
+                    "--private-key-path",
+                    "/path/to/key.pem",
+                    "links",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert "Hello Bank" in captured.out
+
+    def test_enablebanking_interactive_create_link_updates_redirect_url(self) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.enablebanking_cli")
+        provider = MagicMock()
+        provider.redirect_url = "http://127.0.0.1:8765/callback"
+        cli = cli_module.EnableBankingCLI(provider)
+
+        with (
+            patch.object(cli, "_prompt_country", return_value="FR"),
+            patch.object(
+                cli,
+                "_prompt_aspsp",
+                return_value={"name": "BNP Paribas", "bic": "BNPAFRPP"},
+            ),
+            patch.object(
+                provider,
+                "list_aspsps",
+                return_value=[{"name": "BNP Paribas", "bic": "BNPAFRPP"}],
+            ),
+            patch(
+                "beancount_openbanking.enablebanking_cli.questionary.select"
+            ) as mock_select,
+            patch(
+                "beancount_openbanking.enablebanking_cli.questionary.text"
+            ) as mock_text,
+            patch.object(cli, "create_link") as mock_create_link,
+        ):
+            mock_select.return_value.ask.return_value = "personal"
+            mock_text.side_effect = [
+                MagicMock(ask=MagicMock(return_value="90")),
+                MagicMock(
+                    ask=MagicMock(return_value="http://localhost:9999/custom-callback")
+                ),
+            ]
+
+            cli.create_link_interactive()
+
+        assert provider.redirect_url == "http://localhost:9999/custom-callback"
+        mock_create_link.assert_called_once_with(
+            aspsp_name="BNP Paribas",
+            aspsp_country="FR",
+            callback_host="localhost",
+            callback_port=9999,
+            psu_type="personal",
+            access_days=90,
+            open_browser=True,
+        )
+
+    def test_enablebanking_interactive_delete_link_uses_session_model(self) -> None:
+        cli_module = pytest.importorskip("beancount_openbanking.enablebanking_cli")
+        provider = MagicMock()
+        provider.list_sessions.return_value = [
+            EnableBankingSession(
+                session_id="sess-1",
+                aspsp=EnableBankingAspsp(name="Hello Bank", country="FR"),
+                accounts=["acc-1"],
+            )
+        ]
+        cli = cli_module.EnableBankingCLI(provider)
+
+        with (
+            patch(
+                "beancount_openbanking.enablebanking_cli.questionary.select"
+            ) as mock_select,
+            patch(
+                "beancount_openbanking.enablebanking_cli.questionary.confirm"
+            ) as mock_confirm,
+            patch.object(cli, "delete_link") as mock_delete_link,
+        ):
+            mock_select.return_value.ask.return_value = "Hello Bank - sess-1"
+            mock_confirm.return_value.ask.return_value = True
+
+            cli.delete_link_interactive()
+
+        mock_delete_link.assert_called_once_with(session_id="sess-1")

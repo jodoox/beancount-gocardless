@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/beancount-gocardless
+      url: https://pypi.org/project/beancount-gocardless/
     permissions:
       id-token: write
     steps:
@@ -24,13 +24,15 @@ jobs:
          with:
            python-version: "3.12"
        - name: Install dependencies
-         run: uv sync --extra dev
+         run: uv sync --extra docs
        - name: Build package
          run: uv build
        - name: Publish package to PyPI
          env:
            UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
          run: uv publish
+       - name: Clean Sphinx output
+         run: rm -rf docs/_build
        - name: Build Sphinx documentation
          run: |
            uv run sphinx-build -b html docs/ docs/_build

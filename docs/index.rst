@@ -1,48 +1,34 @@
-beancount-gocardless
-====================
+beancount-openbanking
+=====================
 
-A Python client for the GoCardless Bank Account Data API (formerly Nordigen), featuring Pydantic models and a Beancount importer.
+``beancount-openbanking`` is the project identity for the current codebase.
+The distribution name remains ``beancount-gocardless`` for now, while the
+importer and provider code lives in ``beancount_openbanking``.
 
-.. image:: https://img.shields.io/pypi/v/beancount-gocardless.svg
-   :target: https://pypi.org/project/beancount-gocardless/
-   :alt: PyPI
-
-.. image:: https://img.shields.io/pypi/pyversions/beancount-gocardless.svg?v=1
-   :target: https://pypi.org/project/beancount-gocardless/
-   :alt: Python versions
-
-.. image:: https://img.shields.io/pypi/l/beancount-gocardless.svg
-   :target: https://pypi.org/project/beancount-gocardless/
-   :alt: License
-
-Overview
---------
-
-``beancount-gocardless`` provides an integration between the GoCardless Bank Account Data API and Beancount. It includes:
-
-*   **API Client**: Typed client using Pydantic models for endpoints and data structures.
-*   **CLI Tool**: Interactive interface to manage bank connections.
-*   **Beancount Importer**: A ``beangulp`` importer that fetches transactions and converts them into Beancount directives.
-
-Prerequisites
--------------
-
-You need a GoCardless Bank Account Data account to obtain your API credentials (``secret_id`` and ``secret_key``).
-Sign up at `GoCardless Bank Account Data <https://bankaccountdata.gocardless.com/overview/>`_.
-
-Installation
-------------
+Install
+-------
 
 .. code-block:: bash
 
     pip install beancount-gocardless
 
-The project requires Python 3.9+.
+Compatibility
+-------------
+
+* Distribution name: ``beancount-gocardless``
+* Python package: ``beancount_openbanking``
+* Primary multi-provider CLI: ``beancount-openbanking``
+* Dedicated GoCardless helper CLI: ``beancount-gocardless``
+* Dedicated Enable Banking helper CLI: ``beancount-enablebanking``
+
+Reference
+---------
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
+   workflow
+   compatibility
+   importer
    client
    cli
-   importer

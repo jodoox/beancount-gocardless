@@ -1,11 +1,21 @@
 [project]
 name = "beancount-gocardless"
 version = "0.1.14"
-description = ""
-authors = []
+description = "Beancount importer and setup CLI for bank transaction providers"
+keywords = [
+    "beancount",
+    "open-banking",
+    "banking",
+    "gocardless",
+    "enablebanking",
+    "importer",
+]
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -22,12 +32,21 @@ dependencies = [
     "rich",
     "pydantic>=2.0.0",
     "questionary>=2.0.0",
+    "PyJWT>=2.0.0",
+    "cryptography>=3.0.0",
 ]
 license = "MIT"
 license-files = ["LICENSE"]
 
+[project.urls]
+Documentation = "https://beancount-gocardless.readthedocs.io/"
+Issues = "https://github.com/jodoox/beancount-gocardless/issues"
+Repository = "https://github.com/jodoox/beancount-gocardless"
+
 [project.scripts]
-beancount-gocardless = "beancount_gocardless.cli:main"
+beancount-openbanking = "beancount_openbanking.__main__:main"
+beancount-gocardless = "beancount_openbanking.gocardless_cli:main"
+beancount-enablebanking = "beancount_openbanking.enablebanking_cli:main"
 
 [project.optional-dependencies]
 docs = [
@@ -43,10 +62,36 @@ lint = [
 test = [
     "pytest",
 ]
+typecheck = [
+    "ty",
+    "pytest",
+]
 
 [tool.uv]
 package = true
 
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/beancount_openbanking",
+    "src/beancount_gocardless"
+]
+
+[tool.ty.environment]
+root = ["./src"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.terminal]
+error-on-warning = true
+output-format = "concise"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-mock>=3.15.1",
+]
