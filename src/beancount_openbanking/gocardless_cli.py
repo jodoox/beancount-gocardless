@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from typing import Sequence
 
@@ -158,60 +157,21 @@ class GoCardlessCLI(GoCardlessOperations):
 def build_parser() -> argparse.ArgumentParser:
     """Build the GoCardless-only CLI parser."""
 
-    parser = argparse.ArgumentParser(description="Dedicated GoCardless CLI")
-    parser.add_argument("--config", help="Path to a GoCardless YAML config")
-    parser.add_argument(
-        "--env-file",
-        action="append",
-        default=[],
-        help="Additional .env file loaded before expanding --config",
-    )
-    parser.add_argument(
-        "--secret-id",
-        default=os.getenv("GOCARDLESS_SECRET_ID"),
-        help="GoCardless secret ID",
-    )
-    parser.add_argument(
-        "--secret-key",
-        default=os.getenv("GOCARDLESS_SECRET_KEY"),
-        help="GoCardless secret key",
-    )
+    from .cli_registry import GC_CLI_DEDICATED, build_provider_parser
 
-    commands = parser.add_subparsers(dest="command")
-    banks = commands.add_parser("banks", help="List banks")
-    banks.add_argument("--country", help="Two-letter country code")
-    banks.add_argument("--search", help="Filter by name, institution ID, or BIC")
-    banks.set_defaults(command="banks")
-
-    links = commands.add_parser("links", help="List bank links")
-    links.set_defaults(command="links")
-
-    delete_link = commands.add_parser("delete-link", help="Delete a bank link")
-    delete_link.add_argument("--requisition-id", help="Requisition ID to delete")
-    delete_link.set_defaults(command="delete-link")
-
-    create_link = commands.add_parser("create-link", help="Create a bank link")
-    create_link.add_argument("--institution-id", help="Institution ID")
-    create_link.add_argument("--reference", help="Reference for the new link")
-    create_link.add_argument(
-        "--redirect-url",
-        default=os.getenv("GOCARDLESS_REDIRECT_URL", DEFAULT_GOCARDLESS_REDIRECT_URL),
-    )
-    create_link.add_argument("--user-language")
-    create_link.set_defaults(command="create-link")
-
-    accounts = commands.add_parser("accounts", help="List linked accounts")
-    accounts.set_defaults(command="accounts")
-
-    return parser
+    return build_provider_parser(GC_CLI_DEDICATED)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the dedicated GoCardless CLI."""
 
+    from .cli_operations import GC_DISPATCH
+    from .cli_support import run_command
+
     parser = build_parser()
     args = parser.parse_args(argv)
-    cli = GoCardlessCLI(build_gocardless_provider(args, parser))
+    provider = build_gocardless_provider(args, parser)
+    cli = GoCardlessCLI(provider)
 
     if not args.command:
         if not sys.stdin.isatty():
@@ -219,38 +179,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         return cli.run_interactive()
 
-    if args.command == "banks":
-        cli.list_banks(country=args.country, search=args.search)
+    if args.command == "delete-link" and not args.requisition_id and sys.stdin.isatty():
+        cli.delete_link_interactive()
         return 0
-    if args.command == "links":
-        cli.list_links()
-        return 0
-    if args.command == "delete-link":
-        if not args.requisition_id and sys.stdin.isatty():
-            cli.delete_link_interactive()
-            return 0
-        if not args.requisition_id:
-            parser.error("--requisition-id is required for delete-link")
-        cli.delete_link(requisition_id=args.requisition_id)
-        return 0
-    if args.command == "accounts":
-        cli.list_accounts()
-        return 0
-    if args.command == "create-link":
-        if (not args.institution_id or not args.reference) and sys.stdin.isatty():
-            cli.create_link_interactive()
-            return 0
-        if not args.institution_id or not args.reference:
-            parser.error(
-                "--institution-id and --reference are required for create-link"
-            )
-        cli.create_link(
-            institution_id=args.institution_id,
-            reference=args.reference,
-            redirect_url=args.redirect_url,
-            user_language=args.user_language,
-        )
+    if args.command == "create-link" and (not args.institution_id or not args.reference) and sys.stdin.isatty():
+        cli.create_link_interactive()
         return 0
 
+    result = run_command(cli, args, GC_DISPATCH, provider)
+    if result is not None:
+        return result
     parser.print_help()
     return 1

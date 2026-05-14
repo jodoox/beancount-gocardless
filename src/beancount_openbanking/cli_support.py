@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from rich.console import Console
@@ -24,6 +25,7 @@ __all__ = [
     "default_callback_binding",
     "load_import_config",
     "render_table",
+    "run_command",
 ]
 
 DEFAULT_GOCARDLESS_REDIRECT_URL = "http://localhost"
@@ -138,3 +140,21 @@ def build_enablebanking_provider(
         redirect_url=args.redirect_url,
         session_store_path=args.session_store_path,
     )
+
+
+def run_command(
+    ops: object,
+    args: argparse.Namespace,
+    dispatch_map: dict[str, Callable[..., Any]],
+    provider: object,
+) -> int | None:
+    """Execute a CLI command from a dispatch map.
+
+    Returns ``0`` on success, or ``None`` if the command was not found in the
+    dispatch map (so the caller can fall back to help / interactive mode).
+    """
+    handler = dispatch_map.get(args.command)
+    if handler is None:
+        return None
+    handler(ops, args, provider)
+    return 0

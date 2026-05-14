@@ -5,7 +5,11 @@ from __future__ import annotations
 from rich.console import Console
 from rich.panel import Panel
 
-from .cli_support import DEFAULT_GOCARDLESS_REDIRECT_URL, render_table
+from .cli_support import (
+    DEFAULT_GOCARDLESS_REDIRECT_URL,
+    default_callback_binding,
+    render_table,
+)
 from .providers import (
     EnableBankingProvider,
     GoCardlessProvider,
@@ -13,7 +17,12 @@ from .providers import (
     Requisition,
 )
 
-__all__ = ["EnableBankingOperations", "GoCardlessOperations"]
+__all__ = [
+    "EB_DISPATCH",
+    "EnableBankingOperations",
+    "GC_DISPATCH",
+    "GoCardlessOperations",
+]
 
 
 class GoCardlessOperations:
@@ -247,3 +256,50 @@ class EnableBankingOperations:
             f"Created session {session.session_id or 'unknown'} with "
             f"{len(session.accounts)} account(s)."
         )
+
+
+# ---------------------------------------------------------------------------
+# Command dispatch maps — each entry maps a command name to a callable
+# that invokes the right Operations method with the right params.
+# ---------------------------------------------------------------------------
+
+GC_DISPATCH: dict[str, object] = {
+    "banks": lambda ops, args, provider: ops.list_banks(
+        country=args.country, search=args.search
+    ),
+    "links": lambda ops, args, provider: ops.list_links(),
+    "delete-link": lambda ops, args, provider: ops.delete_link(
+        requisition_id=args.requisition_id
+    ),
+    "create-link": lambda ops, args, provider: ops.create_link(
+        institution_id=args.institution_id,
+        reference=args.reference,
+        redirect_url=args.redirect_url,
+        user_language=args.user_language,
+    ),
+    "accounts": lambda ops, args, provider: ops.list_accounts(),
+}
+
+EB_DISPATCH: dict[str, object] = {
+    "banks": lambda ops, args, provider: ops.list_banks(
+        args.country, search=args.search
+    ),
+    "links": lambda ops, args, provider: ops.list_links(),
+    "delete-link": lambda ops, args, provider: ops.delete_link(
+        session_id=args.session_id
+    ),
+    "create-link": lambda ops, args, provider: (
+        lambda host, port: ops.create_link(
+            aspsp_name=args.aspsp_name,
+            aspsp_country=args.country,
+            callback_host=args.callback_host or host,
+            callback_port=args.callback_port or port,
+            psu_type=args.psu_type,
+            access_days=args.access_days,
+            open_browser=not args.no_browser,
+        )
+    )(
+        *default_callback_binding(provider.redirect_url)
+    ),
+    "accounts": lambda ops, args, provider: ops.list_accounts(),
+}

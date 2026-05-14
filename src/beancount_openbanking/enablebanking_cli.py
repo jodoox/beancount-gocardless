@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from typing import Sequence
 
@@ -184,72 +183,21 @@ class EnableBankingCLI(EnableBankingOperations):
 def build_parser() -> argparse.ArgumentParser:
     """Build the Enable Banking-only CLI parser."""
 
-    parser = argparse.ArgumentParser(description="Dedicated Enable Banking CLI")
-    parser.add_argument("--config", help="Path to an Enable Banking YAML config")
-    parser.add_argument(
-        "--env-file",
-        action="append",
-        default=[],
-        help="Additional .env file loaded before expanding --config",
-    )
-    parser.add_argument(
-        "--application-id",
-        default=os.getenv("ENABLE_BANKING_APPLICATION_ID"),
-    )
-    parser.add_argument(
-        "--private-key-path",
-        default=os.getenv("ENABLE_BANKING_PRIVATE_KEY_PATH"),
-    )
-    parser.add_argument(
-        "--redirect-url",
-        default=os.getenv(
-            "ENABLE_BANKING_REDIRECT_URL", DEFAULT_ENABLEBANKING_REDIRECT_URL
-        ),
-    )
-    parser.add_argument(
-        "--session-store-path",
-        default=os.getenv("ENABLE_BANKING_SESSION_STORE_PATH"),
-    )
+    from .cli_registry import EB_CLI_DEDICATED, build_provider_parser
 
-    commands = parser.add_subparsers(dest="command")
-    banks = commands.add_parser("banks", help="List banks")
-    banks.add_argument("--country", help="Two-letter country code")
-    banks.add_argument("--search", help="Filter by name")
-    banks.set_defaults(command="banks")
-
-    links = commands.add_parser("links", help="List bank links")
-    links.set_defaults(command="links")
-
-    delete_link = commands.add_parser("delete-link", help="Delete a bank link")
-    delete_link.add_argument("--session-id", help="Session ID to delete")
-    delete_link.set_defaults(command="delete-link")
-
-    create_link = commands.add_parser("create-link", help="Create a bank link")
-    create_link.add_argument("--country", help="Two-letter country code")
-    create_link.add_argument("--aspsp-name", help="ASPSP name")
-    create_link.add_argument(
-        "--psu-type",
-        default="personal",
-        choices=["personal", "business"],
-    )
-    create_link.add_argument("--access-days", type=int, default=90)
-    create_link.add_argument("--callback-host")
-    create_link.add_argument("--callback-port", type=int)
-    create_link.add_argument("--no-browser", action="store_true")
-    create_link.set_defaults(command="create-link")
-
-    accounts = commands.add_parser("accounts", help="List linked accounts")
-    accounts.set_defaults(command="accounts")
-
-    return parser
+    return build_provider_parser(EB_CLI_DEDICATED)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the dedicated Enable Banking CLI."""
 
+    from .cli_operations import EB_DISPATCH
+    from .cli_support import run_command
+
     parser = build_parser()
     args = parser.parse_args(argv)
-    cli = EnableBankingCLI(build_enablebanking_provider(args, parser))
+    provider = build_enablebanking_provider(args, parser)
+    cli = EnableBankingCLI(provider)
 
     if not args.command:
         if not sys.stdin.isatty():
@@ -257,42 +205,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         return cli.run_interactive()
 
-    if args.command == "banks":
-        cli.list_banks(country=args.country, search=args.search)
+    if args.command == "delete-link" and not args.session_id and sys.stdin.isatty():
+        cli.delete_link_interactive()
         return 0
-    if args.command == "links":
-        cli.list_links()
-        return 0
-    if args.command == "accounts":
-        cli.list_accounts()
-        return 0
-    if args.command == "delete-link":
-        if not args.session_id and sys.stdin.isatty():
-            cli.delete_link_interactive()
-            return 0
-        if not args.session_id:
-            parser.error("--session-id is required for delete-link")
-        cli.delete_link(session_id=args.session_id)
-        return 0
-    if args.command == "create-link":
-        if (not args.country or not args.aspsp_name) and sys.stdin.isatty():
-            cli.create_link_interactive()
-            return 0
-        if not args.country or not args.aspsp_name:
-            parser.error("--country and --aspsp-name are required for create-link")
-        callback_host, callback_port = default_callback_binding(
-            cli.provider.redirect_url
-        )
-        cli.create_link(
-            aspsp_name=args.aspsp_name,
-            aspsp_country=args.country,
-            callback_host=args.callback_host or callback_host,
-            callback_port=args.callback_port or callback_port,
-            psu_type=args.psu_type,
-            access_days=args.access_days,
-            open_browser=not args.no_browser,
-        )
+    if args.command == "create-link" and (not args.country or not args.aspsp_name) and sys.stdin.isatty():
+        cli.create_link_interactive()
         return 0
 
+    result = run_command(cli, args, EB_DISPATCH, provider)
+    if result is not None:
+        return result
     parser.print_help()
     return 1

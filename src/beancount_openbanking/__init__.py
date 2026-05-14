@@ -7,10 +7,10 @@ import warnings
 from importlib.metadata import PackageNotFoundError, version
 
 from .config import (
-    AccountConfig,
     EnableBankingConfig,
     GoCardlessConfig,
     ImportConfig,
+    ImportTarget,
     ProviderName,
     load_config,
 )
@@ -30,7 +30,6 @@ from .providers import (
 
 __all__ = [
     "Account",
-    "AccountConfig",
     "Balance",
     "BankImporter",
     "BookingStatus",
@@ -39,6 +38,7 @@ __all__ = [
     "GoCardlessConfig",
     "GoCardlessProvider",
     "ImportConfig",
+    "ImportTarget",
     "Institution",
     "MetadataRefComparator",
     "Provider",

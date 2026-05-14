@@ -93,7 +93,7 @@ class SessionStore:
         for file_path in self.path.glob("*.json"):
             try:
                 raw = json.loads(file_path.read_text(encoding="utf-8"))
-                sid = raw.get("session_id")
+                sid = raw.get("session_id") or raw.get("sessionId")
                 if sid:
                     ids.append(sid)
             except (json.JSONDecodeError, OSError):

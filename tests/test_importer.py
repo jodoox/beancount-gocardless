@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock, call, patch
 
-from beancount_openbanking.config import AccountConfig
+from beancount_openbanking.config import ImportTarget
 from beancount_openbanking.importer import BankImporter, MetadataRefComparator
 from beancount_openbanking.providers import (
     Balance,
@@ -48,7 +48,7 @@ class TestBankImporterMetadata:
             creditor_name="Test Creditor",
             debtor_name="Test Debtor",
         )
-        account_config = AccountConfig(
+        account_config = ImportTarget(
             id="test",
             asset_account="Assets:Banks:Test",
             exclude_default_metadata=["bookingDate", "creditorName"],
@@ -70,7 +70,7 @@ class TestBankImporterMetadata:
             booking_status=BookingStatus.BOOKED,
             provider_data={"merchantCategoryCode": "5411"},
         )
-        account_config = AccountConfig(
+        account_config = ImportTarget(
             id="test",
             asset_account="Assets:Banks:Test",
             metadata_fields={"mcc": "merchantCategoryCode"},

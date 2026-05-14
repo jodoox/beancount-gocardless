@@ -50,7 +50,14 @@ class GoCardlessImporter(BankImporter):
         return ""
 
     def get_transaction_status(self, transaction) -> str:
-        return self.get_transaction_flag(transaction)
+        from beancount.core import flags
+        from beancount_openbanking.providers import BookingStatus
+
+        return (
+            flags.FLAG_OKAY
+            if transaction.booking_status == BookingStatus.BOOKED
+            else flags.FLAG_WARNING
+        )
 
 
 GoCardLessImporter = GoCardlessImporter

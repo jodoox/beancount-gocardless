@@ -10,8 +10,8 @@ from beancount.core import amount, data, flags
 from beancount.core.number import D
 
 from .config import (
-    AccountConfig,
     ImportConfig,
+    ImportTarget,
     load_config,
 )
 from .providers import (
@@ -95,7 +95,7 @@ class BankImporter(beangulp.Importer):
         self,
         transaction: Transaction,
         custom_metadata: dict[str, object],
-        account_config: AccountConfig | None = None,
+        account_config: ImportTarget | None = None,
     ) -> dict[str, object]:
         metadata: dict[str, object] = {}
 
@@ -171,25 +171,18 @@ class BankImporter(beangulp.Importer):
             return transaction.debtor_name or transaction.creditor_name or ""
         return transaction.creditor_name or transaction.debtor_name or ""
 
-    def get_transaction_date(self, transaction: Transaction) -> date | None:
-        transaction_date = transaction.value_date or transaction.booking_date
-        return date.fromisoformat(transaction_date) if transaction_date else None
-
-    def get_transaction_flag(self, transaction: Transaction) -> str:
-        if transaction.booking_status == BookingStatus.BOOKED:
-            return flags.FLAG_OKAY
-        return flags.FLAG_WARNING
-
     def create_transaction_entry(
         self,
         transaction: Transaction,
         asset_account: str,
         custom_metadata: dict[str, object],
-        account_config: AccountConfig | None = None,
+        account_config: ImportTarget | None = None,
     ) -> data.Transaction | None:
-        transaction_date = self.get_transaction_date(transaction)
+        transaction_date = transaction.value_date or transaction.booking_date
         if transaction_date is None or transaction.amount is None:
             return None
+
+        entry_date = date.fromisoformat(transaction_date)
 
         metadata = self.add_metadata(transaction, custom_metadata, account_config)
         config_currency = self.config.currency if self.config is not None else None
@@ -197,10 +190,15 @@ class BankImporter(beangulp.Importer):
             D(str(transaction.amount)),
             transaction.currency or config_currency or "EUR",
         )
+        flag = (
+            flags.FLAG_OKAY
+            if transaction.booking_status == BookingStatus.BOOKED
+            else flags.FLAG_WARNING
+        )
         return data.Transaction(
             data.new_metadata("", 0, metadata),
-            transaction_date,
-            self.get_transaction_flag(transaction),
+            entry_date,
+            flag,
             self.get_payee(transaction),
             self.get_narration(transaction),
             data.EMPTY_SET,
@@ -217,22 +215,6 @@ class BankImporter(beangulp.Importer):
             ],
         )
 
-    def select_balance(
-        self,
-        balances: list[Balance],
-        preferred_balance_type: str | None,
-    ) -> Balance | None:
-        if not balances:
-            return None
-
-        priority = dict(BALANCE_TYPE_PRIORITY)
-        if preferred_balance_type:
-            priority[preferred_balance_type] = -1
-        return sorted(
-            balances,
-            key=lambda balance: priority.get(balance.balance_type or "", 99),
-        )[0]
-
     def create_balance_entry(
         self,
         asset_account: str,
@@ -240,7 +222,17 @@ class BankImporter(beangulp.Importer):
         custom_metadata: dict[str, object],
         preferred_balance_type: str | None = None,
     ) -> data.Balance | None:
-        selected_balance = self.select_balance(balances, preferred_balance_type)
+        if not balances:
+            return None
+
+        priority = dict(BALANCE_TYPE_PRIORITY)
+        if preferred_balance_type:
+            priority[preferred_balance_type] = -1
+        selected_balance = sorted(
+            balances,
+            key=lambda balance: priority.get(balance.balance_type or "", 99),
+        )[0]
+
         if selected_balance is None:
             return None
 
