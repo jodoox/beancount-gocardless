@@ -18,8 +18,10 @@ from .config import (
 from .providers import EnableBankingProvider, GoCardlessProvider
 
 __all__ = [
+    "COMMON_COUNTRIES",
     "DEFAULT_ENABLEBANKING_REDIRECT_URL",
     "DEFAULT_GOCARDLESS_REDIRECT_URL",
+    "BaseInteractiveCLI",
     "build_enablebanking_provider",
     "build_gocardless_provider",
     "default_callback_binding",
@@ -30,6 +32,67 @@ __all__ = [
 
 DEFAULT_GOCARDLESS_REDIRECT_URL = "http://localhost"
 DEFAULT_ENABLEBANKING_REDIRECT_URL = "http://127.0.0.1:8765/callback"
+
+COMMON_COUNTRIES = [
+    "AT", "BE", "DE", "ES", "FR",
+    "GB", "IE", "IT", "NL", "PT",
+]
+
+
+class BaseInteractiveCLI:
+    """Mixin providing the interactive menu loop and shared prompts.
+
+    Subclasses must define ``create_link_interactive()`` and
+    ``delete_link_interactive()``.  The menu loop calls ``self.list_accounts()``,
+    ``self.list_banks()``, ``self.list_links()``, ``self.create_link_interactive()``,
+    and ``self.delete_link_interactive()`` — which come from the Operations base
+    class and the subclass respectively.
+    """
+
+    import questionary as _questionary
+
+    def run_interactive(self) -> int:
+        while True:
+            action = self._questionary.select(
+                "What do you want to do?",
+                choices=[
+                    "List linked accounts",
+                    "Browse banks",
+                    "List bank links",
+                    "Create bank link",
+                    "Delete bank link",
+                    "Exit",
+                ],
+            ).ask()
+
+            if action in {None, "Exit"}:
+                return 0
+            if action == "List linked accounts":
+                self.list_accounts()
+            elif action == "Browse banks":
+                country = self._prompt_country()
+                if country:
+                    self.list_banks(country=country)
+            elif action == "List bank links":
+                self.list_links()
+            elif action == "Create bank link":
+                self.create_link_interactive()
+            elif action == "Delete bank link":
+                self.delete_link_interactive()
+
+    def _prompt_country(self) -> str | None:
+        choice = self._questionary.select(
+            "Country:",
+            choices=[*COMMON_COUNTRIES, "Other", "Back"],
+        ).ask()
+        if choice in {None, "Back"}:
+            return None
+        if choice == "Other":
+            country = self._questionary.text("Two-letter country code:").ask()
+            if not country or not country.strip():
+                return None
+            return country.strip().upper()
+        return choice
 
 
 def load_import_config(filepath: str, env_files: list[str]) -> ImportConfig:

@@ -11,61 +11,16 @@ import questionary
 from .cli_operations import GoCardlessOperations
 from .cli_support import (
     DEFAULT_GOCARDLESS_REDIRECT_URL,
+    BaseInteractiveCLI,
     build_gocardless_provider,
 )
 from .providers import Institution
 
-COMMON_COUNTRIES = [
-    "AT",
-    "BE",
-    "DE",
-    "ES",
-    "FR",
-    "GB",
-    "IE",
-    "IT",
-    "NL",
-    "PT",
-]
-
 __all__ = ["GoCardlessCLI", "build_parser", "main"]
 
 
-class GoCardlessCLI(GoCardlessOperations):
+class GoCardlessCLI(BaseInteractiveCLI, GoCardlessOperations):
     """Small GoCardless-only CLI with a questionary front-end."""
-
-    def run_interactive(self) -> int:
-        while True:
-            action = questionary.select(
-                "What do you want to do?",
-                choices=[
-                    "List linked accounts",
-                    "Browse banks",
-                    "List bank links",
-                    "Create bank link",
-                    "Delete bank link",
-                    "Exit",
-                ],
-            ).ask()
-
-            if action in {None, "Exit"}:
-                return 0
-            if action == "List linked accounts":
-                self.list_accounts()
-                continue
-            if action == "Browse banks":
-                country = self._prompt_country()
-                if country:
-                    self.list_banks(country=country)
-                continue
-            if action == "List bank links":
-                self.list_links()
-                continue
-            if action == "Create bank link":
-                self.create_link_interactive()
-                continue
-            if action == "Delete bank link":
-                self.delete_link_interactive()
 
     def create_link_interactive(self) -> None:
         country = self._prompt_country()
@@ -121,20 +76,6 @@ class GoCardlessCLI(GoCardlessOperations):
         confirm = questionary.confirm(f"Delete requisition {requisition.id}?").ask()
         if confirm:
             self.delete_link(requisition_id=requisition.id)
-
-    def _prompt_country(self) -> str | None:
-        choice = questionary.select(
-            "Country:",
-            choices=[*COMMON_COUNTRIES, "Other", "Back"],
-        ).ask()
-        if choice in {None, "Back"}:
-            return None
-        if choice == "Other":
-            country = questionary.text("Two-letter country code:").ask()
-            if not country or not country.strip():
-                return None
-            return country.strip().upper()
-        return choice
 
     def _prompt_institution(
         self,

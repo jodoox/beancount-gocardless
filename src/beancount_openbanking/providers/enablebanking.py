@@ -27,7 +27,7 @@ from .enablebanking_types import (
     EnableBankingSession,
     EnableBankingTransaction,
 )
-from .utils import normalize_booking_status, normalize_transaction_direction
+from .utils import normalize_transaction_direction
 
 logger = logging.getLogger(__name__)
 
@@ -170,21 +170,6 @@ class EnableBankingProvider(Provider):
         if not result.code:
             raise RuntimeError("No authorization code received")
         return self.create_session_from_code(result.code)
-
-    def ensure_session(self) -> str:
-        session_store = self._require_session_store()
-        if not session_store.exists():
-            raise RuntimeError(
-                "No Enable Banking session found. "
-                "Run authorize_interactive() first to establish a session."
-            )
-        session_ids = session_store.list()
-        if not session_ids:
-            raise RuntimeError(
-                "No Enable Banking session found. "
-                "Run authorize_interactive() first to establish a session."
-            )
-        return session_ids[0]
 
     def get_session(self, session_id: str) -> EnableBankingSession:
         raw = self._request(
@@ -360,3 +345,19 @@ class EnableBankingProvider(Provider):
             debtor_name=tx.debtor_name,
             provider_data=raw,
         )
+
+
+def normalize_booking_status(
+    value: str | None,
+    *,
+    default: BookingStatus | None = None,
+) -> BookingStatus | None:
+    """Normalize provider-specific booking status codes."""
+    if value is None:
+        return default
+    normalized = value.upper()
+    if normalized in {"BOOK", "BOOKED"}:
+        return BookingStatus.BOOKED
+    if normalized in {"PDNG", "PENDING"}:
+        return BookingStatus.PENDING
+    return default

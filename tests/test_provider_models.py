@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+from beancount_openbanking.importer import BALANCE_TYPE_PRIORITY
 from beancount_openbanking.providers import (
-    BALANCE_TYPE_PRIORITY,
     Account,
     Balance,
     BookingStatus,
     Transaction,
     TransactionDirection,
-    coalesce_field,
-    iban_to_currency,
 )
+from beancount_openbanking.providers.gocardless import coalesce_field, iban_to_currency
 
 
 class TestProviderDomainModels:

@@ -76,6 +76,15 @@ class GoCardlessConfig(ImportConfigBase):
             raise ValueError("secret_key is required for GoCardless")
         return self
 
+    def build_provider(self) -> object:
+        from .providers.gocardless import GoCardlessProvider
+
+        return GoCardlessProvider(
+            secret_id=self.secret_id,
+            secret_key=self.secret_key,
+            cache_options=self.cache_options or None,
+        )
+
 
 class EnableBankingConfig(ImportConfigBase):
     """Configuration for the Enable Banking provider."""
@@ -94,6 +103,17 @@ class EnableBankingConfig(ImportConfigBase):
         if not self.private_key_path.strip():
             raise ValueError("private_key_path is required for Enable Banking")
         return self
+
+    def build_provider(self) -> object:
+        from .providers.enablebanking import EnableBankingProvider
+
+        return EnableBankingProvider(
+            application_id=self.application_id,
+            private_key_path=self.private_key_path,
+            redirect_url=self.redirect_url,
+            session_store_path=self.session_store_path,
+            cache_options=self.cache_options or None,
+        )
 
 
 ImportConfig: TypeAlias = Annotated[

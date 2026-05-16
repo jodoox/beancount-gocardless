@@ -213,24 +213,6 @@ class TestEnableBankingProvider:
         mock_store.save.assert_called_once()
 
     @patch("beancount_openbanking.auth.session_store.SessionStore")
-    def test_ensure_session_no_session(self, mock_store_cls) -> None:
-        mock_store = MagicMock()
-        mock_store.exists.return_value = False
-        mock_store.list.return_value = []
-        mock_store_cls.return_value = mock_store
-
-        provider = EnableBankingProvider(
-            application_id="test-app",
-            private_key_path="/path/to/key.pem",
-            redirect_url="http://localhost/callback",
-            session_store_path="/tmp/test-sessions",
-        )
-        provider.session_store = mock_store
-
-        with pytest.raises(RuntimeError, match="No Enable Banking session found"):
-            provider.ensure_session()
-
-    @patch("beancount_openbanking.auth.session_store.SessionStore")
     def test_get_transactions_does_not_duplicate_entries(self, mock_store_cls) -> None:
         mock_store_cls.return_value = MagicMock()
 

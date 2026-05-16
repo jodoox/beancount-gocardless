@@ -306,7 +306,7 @@ accounts:
         importer = BankImporter()
         with (
             patch(
-                "beancount_openbanking.importer.build_provider",
+                "beancount_openbanking.config.GoCardlessConfig.build_provider",
                 return_value=provider,
             ),
             patch.object(importer, "_today", return_value=date(2024, 2, 10)),

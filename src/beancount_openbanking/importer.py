@@ -15,14 +15,24 @@ from .config import (
     load_config,
 )
 from .providers import (
-    BALANCE_TYPE_PRIORITY,
     Balance,
     BookingStatus,
     Provider,
     Transaction,
     TransactionDirection,
-    build_provider,
 )
+
+
+BALANCE_TYPE_PRIORITY: dict[str, int] = {
+    "expected": 0,
+    "closingBooked": 1,
+    "CLOSING": 1,
+    "interimBooked": 2,
+    "INTERIM": 2,
+    "interimAvailable": 3,
+    "openingBooked": 4,
+    "OPENING": 4,
+}
 
 logger = logging.getLogger(__name__)
 ZERO = D("0")
@@ -63,7 +73,7 @@ class BankImporter(beangulp.Importer):
     def provider(self) -> Provider:
         if self.config is None:
             raise ValueError("Config not loaded. Call load_config() first.")
-        return build_provider(self.config)
+        return self.config.build_provider()
 
     def identify(self, filepath: str) -> bool:
         return Path(filepath).expanduser().resolve() == self.config_filepath

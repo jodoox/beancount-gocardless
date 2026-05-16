@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from beancount_openbanking.providers import GoCardlessProvider, Institution
 
@@ -53,15 +52,6 @@ class TestGoCardlessProvider:
             not isinstance(provider.http, type(provider.http))
             or "CachedSession" not in type(provider.http).__name__
         )
-
-    def test_ensure_session_with_credentials(self) -> None:
-        provider = GoCardlessProvider(secret_id="test-id", secret_key="test-key")
-        assert provider.ensure_session() == "gocardless:test-id"
-
-    def test_ensure_session_without_credentials(self) -> None:
-        provider = GoCardlessProvider(secret_id="", secret_key="")
-        with pytest.raises(RuntimeError, match="GoCardless credentials not configured"):
-            provider.ensure_session()
 
     def test_list_institutions(self) -> None:
         provider = GoCardlessProvider(secret_id="test-id", secret_key="test-key")
