@@ -17,9 +17,14 @@ from beancount_openbanking.providers import (
 
 
 class TestCLI:
+    @staticmethod
+    def _entry_point_script(name: str) -> str:
+        path = shutil.which(name)
+        assert path is not None, f"entry-point {name!r} not found on PATH"
+        return path
+
     def test_installed_primary_cli_entry_point(self) -> None:
-        executable = shutil.which("beancount-openbanking")
-        assert executable is not None
+        executable = self._entry_point_script("beancount-openbanking")
         env = {**os.environ, "BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING": "0"}
 
         result = subprocess.run(
@@ -37,8 +42,7 @@ class TestCLI:
         assert "rename to 'beancount-openbanking' is planned" in result.stderr
 
     def test_installed_gocardless_cli_entry_point(self) -> None:
-        executable = shutil.which("beancount-gocardless")
-        assert executable is not None
+        executable = self._entry_point_script("beancount-gocardless")
         env = {**os.environ, "BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING": "0"}
 
         result = subprocess.run(
@@ -181,8 +185,7 @@ accounts:
         assert captured["provider_name"] == "test-id"
 
     def test_installed_enablebanking_cli_entry_point(self) -> None:
-        executable = shutil.which("beancount-enablebanking")
-        assert executable is not None
+        executable = self._entry_point_script("beancount-enablebanking")
         env = {**os.environ, "BEANCOUNT_OPENBANKING_SILENCE_RENAME_WARNING": "0"}
 
         result = subprocess.run(

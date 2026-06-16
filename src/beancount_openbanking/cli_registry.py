@@ -102,7 +102,11 @@ def _add_command_subparsers(
 _ARG_CONFIG = Arg(["--config"], {"help": "Path to a YAML config file"})
 _ARG_ENV_FILE = Arg(
     ["--env-file"],
-    {"action": "append", "default": [], "help": "Additional .env file loaded before expanding --config"},
+    {
+        "action": "append",
+        "default": [],
+        "help": "Additional .env file loaded before expanding --config",
+    },
 )
 _ARG_COUNTRY = Arg(["--country"], {"help": "Two-letter country code"})
 _ARG_SEARCH_GC = Arg(["--search"], {"help": "Filter by name, institution ID, or BIC"})
@@ -127,11 +131,15 @@ _ARG_GC_REQUISITION_ID_OPTIONAL = Arg(
 _ARG_GC_INSTITUTION_ID_REQUIRED = Arg(["--institution-id"], {"required": True})
 _ARG_GC_INSTITUTION_ID_OPTIONAL = Arg(["--institution-id"], {"help": "Institution ID"})
 _ARG_GC_REFERENCE_REQUIRED = Arg(["--reference"], {"required": True})
-_ARG_GC_REFERENCE_OPTIONAL = Arg(["--reference"], {"help": "Reference for the new link"})
+_ARG_GC_REFERENCE_OPTIONAL = Arg(
+    ["--reference"], {"help": "Reference for the new link"}
+)
 _ARG_GC_REDIRECT_URL = Arg(
     ["--redirect-url"],
     {
-        "default": os.getenv("GOCARDLESS_REDIRECT_URL", DEFAULT_GOCARDLESS_REDIRECT_URL),
+        "default": os.getenv(
+            "GOCARDLESS_REDIRECT_URL", DEFAULT_GOCARDLESS_REDIRECT_URL
+        ),
         "help": "Redirect URL",
     },
 )
@@ -141,29 +149,38 @@ _ARG_GC_USER_LANGUAGE = Arg(["--user-language"], {"help": "User language"})
 
 _ARG_EB_APPLICATION_ID = Arg(
     ["--application-id"],
-    {"default": os.getenv("ENABLE_BANKING_APPLICATION_ID"), "help": "Enable Banking application ID"},
+    {
+        "default": os.getenv("ENABLE_BANKING_APPLICATION_ID"),
+        "help": "Enable Banking application ID",
+    },
 )
 _ARG_EB_PRIVATE_KEY_PATH = Arg(
     ["--private-key-path"],
-    {"default": os.getenv("ENABLE_BANKING_PRIVATE_KEY_PATH"), "help": "Path to RSA private key (PEM)"},
+    {
+        "default": os.getenv("ENABLE_BANKING_PRIVATE_KEY_PATH"),
+        "help": "Path to RSA private key (PEM)",
+    },
 )
 _ARG_EB_REDIRECT_URL = Arg(
     ["--redirect-url"],
     {
-        "default": os.getenv("ENABLE_BANKING_REDIRECT_URL", DEFAULT_ENABLEBANKING_REDIRECT_URL),
+        "default": os.getenv(
+            "ENABLE_BANKING_REDIRECT_URL", DEFAULT_ENABLEBANKING_REDIRECT_URL
+        ),
         "help": "OAuth redirect URL",
     },
 )
 _ARG_EB_SESSION_STORE_PATH = Arg(
     ["--session-store-path"],
-    {"default": os.getenv("ENABLE_BANKING_SESSION_STORE_PATH"), "help": "Session storage directory"},
+    {
+        "default": os.getenv("ENABLE_BANKING_SESSION_STORE_PATH"),
+        "help": "Session storage directory",
+    },
 )
 _ARG_EB_SESSION_ID_REQUIRED = Arg(
     ["--session-id"], {"required": True, "help": "Session ID"}
 )
-_ARG_EB_SESSION_ID_OPTIONAL = Arg(
-    ["--session-id"], {"help": "Session ID to delete"}
-)
+_ARG_EB_SESSION_ID_OPTIONAL = Arg(["--session-id"], {"help": "Session ID to delete"})
 _ARG_EB_COUNTRY_REQUIRED = Arg(
     ["--country"], {"required": True, "help": "Two-letter country code"}
 )

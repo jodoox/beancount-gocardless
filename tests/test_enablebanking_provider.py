@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
+from beancount_openbanking.auth.enablebanking_types import (
+    EnableBankingAccountDetail,
+    EnableBankingSession,
+)
 from beancount_openbanking.providers import (
     BookingStatus,
     EnableBankingProvider,
     TransactionDirection,
-)
-from beancount_openbanking.providers.enablebanking_types import (
-    EnableBankingAccountDetail,
-    EnableBankingSession,
 )
 
 
@@ -74,143 +72,51 @@ class TestEnableBankingProvider:
         response = MagicMock()
         response.json.return_value = {"aspsps": [{"name": "Hello Bank"}]}
 
-        with patch.object(provider, "_request", return_value=response):
+        with patch.object(provider.api, "request", return_value=response):
             banks = provider.list_aspsps("FR")
 
         assert banks == [{"name": "Hello Bank"}]
 
-    def test_session_methods_require_session_store(self) -> None:
-        provider = EnableBankingProvider(
-            application_id="test-app",
-            private_key_path="/path/to/key.pem",
-            redirect_url="http://localhost/callback",
-            session_store_path=None,
-        )
-
-        with pytest.raises(RuntimeError, match="session storage is not configured"):
-            provider.list_sessions()
-
-    @patch("beancount_openbanking.auth.session_store.SessionStore")
-    def test_create_session_from_code_refreshes_session_details(
-        self, mock_store_cls
-    ) -> None:
-        mock_store = MagicMock()
-        mock_store_cls.return_value = mock_store
-
+    def test_list_accounts_empty(self) -> None:
         provider = EnableBankingProvider(
             application_id="test-app",
             private_key_path="/path/to/key.pem",
             redirect_url="http://localhost/callback",
             session_store_path="/tmp/test-sessions",
         )
-        provider.session_store = mock_store
-        post_response = MagicMock()
-        post_response.json.return_value = {"session_id": "session-1"}
-        get_response = MagicMock()
-        get_response.json.return_value = {
-            "session_id": "session-1",
-            "accounts": [{"uid": "acc-1", "name": "Checking"}],
-        }
-
-        with patch.object(
-            provider,
-            "_request",
-            side_effect=[post_response, get_response],
-        ):
-            session = provider.create_session_from_code("auth-code")
-
-        assert isinstance(session, EnableBankingSession)
-        assert session.accounts[0] == "acc-1"
-        mock_store.save.assert_called_once()
-        saved = mock_store.save.call_args[0][0]
-        assert isinstance(saved, EnableBankingSession)
-
-    @patch("beancount_openbanking.auth.session_store.SessionStore")
-    def test_list_accounts_empty(self, mock_store_cls) -> None:
-        mock_store = MagicMock()
-        mock_store.load_all.return_value = []
-        mock_store.exists.return_value = False
-        mock_store.list.return_value = []
-        mock_store_cls.return_value = mock_store
-
-        provider = EnableBankingProvider(
-            application_id="test-app",
-            private_key_path="/path/to/key.pem",
-            redirect_url="http://localhost/callback",
-            session_store_path="/tmp/test-sessions",
-        )
-        provider.session_store = mock_store
+        provider.session_manager.list_sessions = MagicMock(return_value=[])
 
         assert provider.list_accounts() == []
 
-    @patch("beancount_openbanking.auth.session_store.SessionStore")
-    def test_list_accounts_with_data(self, mock_store_cls) -> None:
-        mock_store = MagicMock()
-        mock_store.load_all.return_value = [
-            EnableBankingSession(
-                session_id="session-1",
-                accounts=["acc-1"],
-                accounts_data=[
-                    EnableBankingAccountDetail(
-                        uid="acc-1",
-                        name="Test Account",
-                        currency="EUR",
-                        account_id={"iban": "DE89370400440532013000"},
-                    )
-                ],
-            )
-        ]
-        mock_store_cls.return_value = mock_store
-
+    def test_list_accounts_with_data(self) -> None:
         provider = EnableBankingProvider(
             application_id="test-app",
             private_key_path="/path/to/key.pem",
             redirect_url="http://localhost/callback",
             session_store_path="/tmp/test-sessions",
         )
-        provider.session_store = mock_store
+        provider.session_manager.list_sessions = MagicMock(
+            return_value=[
+                EnableBankingSession(
+                    session_id="session-1",
+                    accounts=["acc-1"],
+                    accounts_data=[
+                        EnableBankingAccountDetail(
+                            uid="acc-1",
+                            name="Test Account",
+                            currency="EUR",
+                            account_id={"iban": "DE89370400440532013000"},
+                        )
+                    ],
+                )
+            ]
+        )
 
         accounts = provider.list_accounts()
 
         assert len(accounts) == 1
         assert accounts[0].id == "acc-1"
         assert accounts[0].iban == "DE89370400440532013000"
-
-    @patch("beancount_openbanking.auth.session_store.SessionStore")
-    def test_list_accounts_refreshes_stored_session(self, mock_store_cls) -> None:
-        mock_store = MagicMock()
-        mock_store.load_all.return_value = [
-            EnableBankingSession(session_id="session-1")
-        ]
-        mock_store_cls.return_value = mock_store
-
-        provider = EnableBankingProvider(
-            application_id="test-app",
-            private_key_path="/path/to/key.pem",
-            redirect_url="http://localhost/callback",
-            session_store_path="/tmp/test-sessions",
-        )
-        provider.session_store = mock_store
-
-        with patch.object(
-            provider,
-            "get_session",
-            return_value=EnableBankingSession(
-                session_id="session-1",
-                accounts=["acc-1"],
-                accounts_data=[
-                    EnableBankingAccountDetail(
-                        uid="acc-1",
-                        name="Checking",
-                    )
-                ],
-            ),
-        ):
-            accounts = provider.list_accounts()
-
-        assert len(accounts) == 1
-        assert accounts[0].id == "acc-1"
-        mock_store.save.assert_called_once()
 
     @patch("beancount_openbanking.auth.session_store.SessionStore")
     def test_get_transactions_does_not_duplicate_entries(self, mock_store_cls) -> None:
@@ -262,8 +168,8 @@ class TestEnableBankingProvider:
             ]
         }
         with patch.object(
-            provider,
-            "_request",
+            provider.api,
+            "request",
             side_effect=[first_response, second_response],
         ):
             transactions = provider.get_transactions("acc-1")

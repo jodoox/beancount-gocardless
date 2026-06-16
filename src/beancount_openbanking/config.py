@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
 import yaml
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 from typing_extensions import TypeAlias
 
-from .providers.base import BookingStatus
+from .providers.base import BookingStatus, Provider
 from .utils import find_dotenv, read_dotenv
 
 
@@ -76,7 +76,7 @@ class GoCardlessConfig(ImportConfigBase):
             raise ValueError("secret_key is required for GoCardless")
         return self
 
-    def build_provider(self) -> object:
+    def build_provider(self) -> Provider:
         from .providers.gocardless import GoCardlessProvider
 
         return GoCardlessProvider(
@@ -104,7 +104,7 @@ class EnableBankingConfig(ImportConfigBase):
             raise ValueError("private_key_path is required for Enable Banking")
         return self
 
-    def build_provider(self) -> object:
+    def build_provider(self) -> Provider:
         from .providers.enablebanking import EnableBankingProvider
 
         return EnableBankingProvider(
@@ -135,7 +135,7 @@ def _expand_env_vars(value: str, env: dict[str, str]) -> str:
     return ENV_VAR_PATTERN.sub(replace, value)
 
 
-def _expand_config_values(value: object, env: dict[str, str]) -> object:
+def _expand_config_values(value: object, env: dict[str, str]) -> Any:
     if isinstance(value, str):
         return _expand_env_vars(value, env)
     if isinstance(value, list):
@@ -154,7 +154,7 @@ def expand_config_values(
 
     This is the pure (I/O-free) transformation phase of config loading.
     """
-    expanded = _expand_config_values(raw, env)
+    expanded: dict[str, object] = _expand_config_values(raw, env)
     expanded.pop("env", None)
     expanded.pop("env_files", None)
     if "provider" not in expanded and default_provider is not None:
@@ -221,12 +221,17 @@ def _build_env(
     if default_dotenv is not None:
         env.update(read_dotenv(default_dotenv))
 
-    configured_files = config_dict.get("env_files") or []
-    for candidate in [*configured_files, *(env_files or [])]:
+    configured_files = config_dict.get("env_files")
+    configured_paths: list[str] = (
+        [str(item) for item in configured_files]
+        if isinstance(configured_files, list)
+        else []
+    )
+    for candidate in [*configured_paths, *(env_files or [])]:
         env.update(read_dotenv(_resolve_env_path(config_path, candidate)))
 
-    inline_env = config_dict.get("env") or {}
-    if inline_env:
+    inline_env = config_dict.get("env")
+    if isinstance(inline_env, dict):
         expanded_inline_env = {
             str(key): _expand_env_vars(str(value), {**env, **os_environ()})
             for key, value in inline_env.items()

@@ -1,9 +1,9 @@
-"""Tests for shared HTTP utilities in providers/base.py."""
+"""Tests for shared HTTP utilities in providers/http.py."""
 
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 import requests
-from beancount_openbanking.providers.base import (
+from beancount_openbanking.providers.http import (
     create_cached_session,
     send_with_rate_limit_retry,
     strip_headers_hook,
@@ -56,7 +56,7 @@ class TestStripHeadersHook:
 
 
 class TestCreateCachedSession:
-    @patch("beancount_openbanking.providers.base.requests_cache.CachedSession")
+    @patch("beancount_openbanking.providers.http.requests_cache.CachedSession")
     def test_uses_defaults_and_attaches_hook(self, mock_cached_session) -> None:
         mock_hooks = {"response": []}
         mock_cached_session.return_value.hooks = mock_hooks
@@ -74,12 +74,12 @@ class TestCreateCachedSession:
         assert session is mock_cached_session.return_value
         assert strip_headers_hook in mock_hooks["response"]
 
-    @patch("beancount_openbanking.providers.base.requests_cache.CachedSession")
+    @patch("beancount_openbanking.providers.http.requests_cache.CachedSession")
     def test_allows_custom_cache_name(self, mock_cached_session) -> None:
         create_cached_session({}, default_cache_name="gocardless")
         assert mock_cached_session.call_args.kwargs["cache_name"] == "gocardless"
 
-    @patch("beancount_openbanking.providers.base.requests_cache.CachedSession")
+    @patch("beancount_openbanking.providers.http.requests_cache.CachedSession")
     def test_user_options_override_defaults(self, mock_cached_session) -> None:
         create_cached_session({"expire_after": 3600, "backend": "memory"})
         kwargs = mock_cached_session.call_args.kwargs
@@ -113,7 +113,7 @@ class TestSendWithRateLimitRetry:
         ok_response.status_code = 200
         session.request.side_effect = [rate_limited, ok_response]
 
-        with patch("beancount_openbanking.providers.base.time.sleep") as mock_sleep:
+        with patch("beancount_openbanking.providers.http.time.sleep") as mock_sleep:
             response = send_with_rate_limit_retry(
                 session, "GET", "https://example.com", backoff_base=1
             )
@@ -131,7 +131,7 @@ class TestSendWithRateLimitRetry:
         ok_response.status_code = 200
         session.request.side_effect = [rate_limited, ok_response]
 
-        with patch("beancount_openbanking.providers.base.time.sleep") as mock_sleep:
+        with patch("beancount_openbanking.providers.http.time.sleep") as mock_sleep:
             response = send_with_rate_limit_retry(session, "GET", "https://example.com")
 
         assert response is ok_response
@@ -144,7 +144,7 @@ class TestSendWithRateLimitRetry:
         rate_limited.headers = {}
         session.request.return_value = rate_limited
 
-        with patch("beancount_openbanking.providers.base.time.sleep"):
+        with patch("beancount_openbanking.providers.http.time.sleep"):
             response = send_with_rate_limit_retry(
                 session, "GET", "https://example.com", max_retries=2, backoff_base=1
             )

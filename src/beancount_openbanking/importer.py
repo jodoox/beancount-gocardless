@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 import beangulp
 from beancount.core import amount, data, flags
 from beancount.core.number import D
@@ -67,7 +68,9 @@ class BankImporter(beangulp.Importer):
         self.config_filepath = Path(config_filepath).expanduser().resolve()
         self.config: ImportConfig | None = None
         if "cmp" not in self.__class__.__dict__:
-            self.cmp = self._build_cmp()
+            # The parent beangulp.Importer declares ``cmp`` as a staticmethod;
+            # we replace it with a callable instance for metadata comparison.
+            self.cmp = self._build_cmp()  # ty: ignore[invalid-assignment]
 
     @property
     def provider(self) -> Provider:
@@ -143,7 +146,9 @@ class BankImporter(beangulp.Importer):
         return None
 
     def _resolve_dotted_path(self, root: object, dotted_path: str) -> object:
-        current = root
+        from typing import cast
+
+        current: Any = root
         for segment in dotted_path.split("."):
             if current is None:
                 return None
@@ -156,7 +161,7 @@ class BankImporter(beangulp.Importer):
                 current = current[index]
                 continue
             if isinstance(current, dict):
-                current = current.get(segment)
+                current = cast(dict[str, Any], current).get(segment)
                 continue
             if hasattr(current, segment):
                 current = getattr(current, segment)
@@ -268,7 +273,7 @@ class BankImporter(beangulp.Importer):
             distinct_details.append(f"{balance.balance_type}: {value}")
             seen_values.add(value)
 
-        metadata = {"detail": " / ".join(distinct_details)}
+        metadata: dict[str, object] = {"detail": " / ".join(distinct_details)}
         metadata.update(custom_metadata)
         return data.Balance(
             meta=data.new_metadata("", 0, metadata),

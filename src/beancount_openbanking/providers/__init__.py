@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from ..auth.enablebanking_types import (
+    EnableBankingAspsp,
+    EnableBankingSession,
+)
 from .base import (
     Account,
     Balance,
@@ -11,7 +15,6 @@ from .base import (
     TransactionDirection,
 )
 from .enablebanking import EnableBankingProvider
-from .enablebanking_types import EnableBankingAspsp, EnableBankingSession
 from .gocardless import GoCardlessProvider
 from .gocardless_types import Institution, Requisition
 

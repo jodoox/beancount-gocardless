@@ -8,15 +8,18 @@ from typing import Sequence
 
 import questionary
 
-from .cli_operations import GoCardlessOperations
+from .cli_factory import build_provider
+from .cli_operations import (
+    GoCardlessOperations,
+)
 from .cli_support import (
     DEFAULT_GOCARDLESS_REDIRECT_URL,
     BaseInteractiveCLI,
-    build_gocardless_provider,
 )
-from .providers import Institution
+from .config import GoCardlessConfig
+from .providers import GoCardlessProvider, Institution
 
-__all__ = ["GoCardlessCLI", "build_parser", "main"]
+__all__ = ["GoCardlessCLI", "build_gocardless_provider", "build_parser", "main"]
 
 
 class GoCardlessCLI(BaseInteractiveCLI, GoCardlessOperations):
@@ -59,23 +62,18 @@ class GoCardlessCLI(BaseInteractiveCLI, GoCardlessOperations):
             self.console.print("No bank links to delete.")
             return
 
-        req_map = {
-            f"{r.reference} — {r.institution_id} ({r.id})": r for r in requisitions
-        }
-        selection = questionary.select(
-            "Select link to delete:",
-            choices=[*req_map, "Back"],
-        ).ask()
-        if selection in {None, "Back"}:
-            return
+        from .cli_support import prompt_pick
 
-        requisition = req_map.get(selection)
-        if requisition is None:
+        picked = prompt_pick(
+            self.console,
+            requisitions,
+            format_fn=lambda r: f"{r.reference} — {r.institution_id} ({r.id})",
+            question="Select link to delete:",
+            confirm_template="Delete requisition {item.id}?",
+        )
+        if picked is None:
             return
-
-        confirm = questionary.confirm(f"Delete requisition {requisition.id}?").ask()
-        if confirm:
-            self.delete_link(requisition_id=requisition.id)
+        self.delete_link(requisition_id=picked.id)
 
     def _prompt_institution(
         self,
@@ -93,6 +91,21 @@ class GoCardlessCLI(BaseInteractiveCLI, GoCardlessOperations):
         if selection in {None, "Back"}:
             return None
         return institution_map.get(selection)
+
+
+def build_gocardless_provider(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> GoCardlessProvider:
+    """Build a GoCardless provider from CLI arguments or a config file."""
+    return build_provider(
+        args,
+        parser,
+        provider_name="gocardless",
+        config_class=GoCardlessConfig,
+        provider_class=GoCardlessProvider,
+        config_label="GoCardless",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -123,7 +136,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "delete-link" and not args.requisition_id and sys.stdin.isatty():
         cli.delete_link_interactive()
         return 0
-    if args.command == "create-link" and (not args.institution_id or not args.reference) and sys.stdin.isatty():
+    if (
+        args.command == "create-link"
+        and (not args.institution_id or not args.reference)
+        and sys.stdin.isatty()
+    ):
         cli.create_link_interactive()
         return 0
 

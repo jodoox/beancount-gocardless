@@ -8,15 +8,19 @@ from typing import Sequence
 
 import questionary
 
-from .cli_operations import EnableBankingOperations
+from .cli_factory import build_provider
+from .cli_operations import (
+    EnableBankingOperations,
+)
 from .cli_support import (
     DEFAULT_ENABLEBANKING_REDIRECT_URL,
     BaseInteractiveCLI,
-    build_enablebanking_provider,
     default_callback_binding,
 )
+from .config import EnableBankingConfig
+from .providers import EnableBankingProvider
 
-__all__ = ["EnableBankingCLI", "build_parser", "main"]
+__all__ = ["EnableBankingCLI", "build_enablebanking_provider", "build_parser", "main"]
 
 
 class EnableBankingCLI(BaseInteractiveCLI, EnableBankingOperations):
@@ -83,28 +87,23 @@ class EnableBankingCLI(BaseInteractiveCLI, EnableBankingOperations):
             self.console.print("No bank links to delete.")
             return
 
-        session_map = {
-            (
-                f"{s.aspsp.name if s.aspsp and s.aspsp.name else 'Unknown'}"
-                f" - {s.session_id or ''}"
-            ): s
-            for s in sessions
-        }
-        selection = questionary.select(
-            "Select link to delete:",
-            choices=[*session_map, "Back"],
-        ).ask()
-        if selection in {None, "Back"}:
-            return
+        from .auth.enablebanking_types import EnableBankingSession
+        from .cli_support import prompt_pick
 
-        session = session_map.get(selection)
-        if session is None:
-            return
+        def format_session(s: EnableBankingSession) -> str:
+            aspsp_name = s.aspsp.name if s.aspsp and s.aspsp.name else "Unknown"
+            return f"{aspsp_name} - {s.session_id or ''}"
 
-        session_id = session.session_id or ""
-        confirm = questionary.confirm(f"Delete session {session_id}?").ask()
-        if confirm:
-            self.delete_link(session_id=session_id)
+        picked = prompt_pick(
+            self.console,
+            sessions,
+            format_fn=format_session,
+            question="Select link to delete:",
+            confirm_template="Delete session {item.session_id}?",
+        )
+        if picked is None:
+            return
+        self.delete_link(session_id=picked.session_id or "")
 
     def _prompt_aspsp(self, banks: list[dict]) -> dict | None:
         bank_map = {
@@ -119,6 +118,21 @@ class EnableBankingCLI(BaseInteractiveCLI, EnableBankingOperations):
         if selection in {None, "Back"}:
             return None
         return bank_map.get(selection)
+
+
+def build_enablebanking_provider(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> EnableBankingProvider:
+    """Build an Enable Banking provider from CLI arguments or a config file."""
+    return build_provider(
+        args,
+        parser,
+        provider_name="enablebanking",
+        config_class=EnableBankingConfig,
+        provider_class=EnableBankingProvider,
+        config_label="Enable Banking",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -149,7 +163,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "delete-link" and not args.session_id and sys.stdin.isatty():
         cli.delete_link_interactive()
         return 0
-    if args.command == "create-link" and (not args.country or not args.aspsp_name) and sys.stdin.isatty():
+    if (
+        args.command == "create-link"
+        and (not args.country or not args.aspsp_name)
+        and sys.stdin.isatty()
+    ):
         cli.create_link_interactive()
         return 0
 

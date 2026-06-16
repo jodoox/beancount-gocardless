@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import time
 from datetime import date
@@ -15,9 +16,8 @@ from .base import (
     BookingStatus,
     Provider,
     Transaction,
-    create_cached_session,
-    send_with_rate_limit_retry,
 )
+from .http import create_cached_session, send_with_rate_limit_retry
 from .gocardless_types import Institution, Requisition
 from .utils import normalize_transaction_direction
 
@@ -52,6 +52,36 @@ class GoCardlessProvider(Provider):
             cache_options,
             default_cache_name="gocardless",
         )
+
+    @classmethod
+    def from_config(cls, config: object) -> "GoCardlessProvider":
+        """Build a provider from a parsed ``GoCardlessConfig``."""
+        # Local import to avoid a circular dependency at module load time.
+        from ..config import GoCardlessConfig
+
+        assert isinstance(config, GoCardlessConfig)
+        return cls(
+            secret_id=config.secret_id,
+            secret_key=config.secret_key,
+            cache_options=config.cache_options or None,
+        )
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "GoCardlessProvider":
+        """Build a provider from already-validated CLI arguments."""
+        return cls(
+            secret_id=args.secret_id,
+            secret_key=args.secret_key,
+        )
+
+    @staticmethod
+    def credentials_from_args(args: argparse.Namespace) -> tuple[str, str] | None:
+        """Return ``(secret_id, secret_key)`` if present, else ``None``."""
+        sid = getattr(args, "secret_id", None)
+        skey = getattr(args, "secret_key", None)
+        if not sid or not skey:
+            return None
+        return sid, skey
 
     @property
     def token(self) -> str:
@@ -252,24 +282,77 @@ def coalesce_field(raw: dict[str, Any], *keys: str) -> Any:
 
 
 IBAN_CURRENCY_MAP: dict[str, str] = {
-    "AL": "ALL", "AD": "EUR", "AT": "EUR", "AZ": "AZN",
-    "BH": "BHD", "BY": "BYN", "BE": "EUR", "BA": "BAM",
-    "BR": "BRL", "BG": "BGN", "CR": "CRC", "HR": "EUR",
-    "CY": "EUR", "CZ": "CZK", "DK": "DKK", "DO": "DOP",
-    "EG": "EGP", "SV": "USD", "EE": "EUR", "FI": "EUR",
-    "FR": "EUR", "GE": "GEL", "DE": "EUR", "GI": "GIP",
-    "GR": "EUR", "GT": "GTQ", "HU": "HUF", "IS": "ISK",
-    "IE": "EUR", "IL": "ILS", "IT": "EUR", "JO": "JOD",
-    "KZ": "KZT", "KW": "KWD", "LV": "EUR", "LB": "LBP",
-    "LI": "CHF", "LT": "EUR", "LU": "EUR", "MT": "EUR",
-    "MR": "MRU", "MU": "MUR", "MD": "MDL", "MC": "EUR",
-    "ME": "EUR", "NL": "EUR", "MK": "MKD", "NO": "NOK",
-    "PK": "PKR", "PS": "ILS", "PL": "PLN", "PT": "EUR",
-    "RO": "RON", "LC": "XCD", "SM": "EUR", "SA": "SAR",
-    "RS": "RSD", "SC": "SCR", "SK": "EUR", "SI": "EUR",
-    "ES": "EUR", "SE": "SEK", "CH": "CHF", "TN": "TND",
-    "TR": "TRY", "UA": "UAH", "AE": "AED", "GB": "GBP",
-    "VA": "EUR", "VG": "USD", "XK": "EUR",
+    "AL": "ALL",
+    "AD": "EUR",
+    "AT": "EUR",
+    "AZ": "AZN",
+    "BH": "BHD",
+    "BY": "BYN",
+    "BE": "EUR",
+    "BA": "BAM",
+    "BR": "BRL",
+    "BG": "BGN",
+    "CR": "CRC",
+    "HR": "EUR",
+    "CY": "EUR",
+    "CZ": "CZK",
+    "DK": "DKK",
+    "DO": "DOP",
+    "EG": "EGP",
+    "SV": "USD",
+    "EE": "EUR",
+    "FI": "EUR",
+    "FR": "EUR",
+    "GE": "GEL",
+    "DE": "EUR",
+    "GI": "GIP",
+    "GR": "EUR",
+    "GT": "GTQ",
+    "HU": "HUF",
+    "IS": "ISK",
+    "IE": "EUR",
+    "IL": "ILS",
+    "IT": "EUR",
+    "JO": "JOD",
+    "KZ": "KZT",
+    "KW": "KWD",
+    "LV": "EUR",
+    "LB": "LBP",
+    "LI": "CHF",
+    "LT": "EUR",
+    "LU": "EUR",
+    "MT": "EUR",
+    "MR": "MRU",
+    "MU": "MUR",
+    "MD": "MDL",
+    "MC": "EUR",
+    "ME": "EUR",
+    "NL": "EUR",
+    "MK": "MKD",
+    "NO": "NOK",
+    "PK": "PKR",
+    "PS": "ILS",
+    "PL": "PLN",
+    "PT": "EUR",
+    "RO": "RON",
+    "LC": "XCD",
+    "SM": "EUR",
+    "SA": "SAR",
+    "RS": "RSD",
+    "SC": "SCR",
+    "SK": "EUR",
+    "SI": "EUR",
+    "ES": "EUR",
+    "SE": "SEK",
+    "CH": "CHF",
+    "TN": "TND",
+    "TR": "TRY",
+    "UA": "UAH",
+    "AE": "AED",
+    "GB": "GBP",
+    "VA": "EUR",
+    "VG": "USD",
+    "XK": "EUR",
 }
 
 

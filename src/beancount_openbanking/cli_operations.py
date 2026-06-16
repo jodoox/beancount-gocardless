@@ -1,12 +1,20 @@
-"""Provider-specific CLI operations."""
+"""Provider-specific CLI operations and command dispatch maps.
+
+The classes here are command handlers — they take parsed args, call
+provider methods, and print results. Shared concerns (interactive mixin,
+table rendering, dispatch helpers, default URLs) live in ``cli_support``.
+"""
 
 from __future__ import annotations
+
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 
 from .cli_support import (
     DEFAULT_GOCARDLESS_REDIRECT_URL,
+    DispatchMap,
     default_callback_binding,
     render_table,
 )
@@ -243,6 +251,9 @@ class EnableBankingOperations:
         access_days: int = 90,
         open_browser: bool = True,
     ) -> None:
+        def show_url(url: str) -> None:
+            self.console.print(Panel.fit(url, title="Authorization URL"))
+
         session = self.provider.authorize_interactive(
             aspsp_name=aspsp_name,
             aspsp_country=aspsp_country.upper(),
@@ -251,6 +262,7 @@ class EnableBankingOperations:
             psu_type=psu_type,
             access_days=access_days,
             open_browser=open_browser,
+            on_authorization_url=show_url,
         )
         self.console.print(
             f"Created session {session.session_id or 'unknown'} with "
@@ -258,12 +270,29 @@ class EnableBankingOperations:
         )
 
 
-# ---------------------------------------------------------------------------
-# Command dispatch maps — each entry maps a command name to a callable
-# that invokes the right Operations method with the right params.
-# ---------------------------------------------------------------------------
+def _gocardless_create_link(ops: Any, args: Any, provider: Any) -> None:
+    ops.create_link(
+        institution_id=args.institution_id,
+        reference=args.reference,
+        redirect_url=args.redirect_url,
+        user_language=args.user_language,
+    )
 
-GC_DISPATCH: dict[str, object] = {
+
+def _enablebanking_create_link(ops: Any, args: Any, provider: Any) -> None:
+    host, port = default_callback_binding(provider.redirect_url)
+    ops.create_link(
+        aspsp_name=args.aspsp_name,
+        aspsp_country=args.country,
+        callback_host=args.callback_host or host,
+        callback_port=args.callback_port or port,
+        psu_type=args.psu_type,
+        access_days=args.access_days,
+        open_browser=not args.no_browser,
+    )
+
+
+GC_DISPATCH: DispatchMap = {
     "banks": lambda ops, args, provider: ops.list_banks(
         country=args.country, search=args.search
     ),
@@ -271,16 +300,11 @@ GC_DISPATCH: dict[str, object] = {
     "delete-link": lambda ops, args, provider: ops.delete_link(
         requisition_id=args.requisition_id
     ),
-    "create-link": lambda ops, args, provider: ops.create_link(
-        institution_id=args.institution_id,
-        reference=args.reference,
-        redirect_url=args.redirect_url,
-        user_language=args.user_language,
-    ),
+    "create-link": _gocardless_create_link,
     "accounts": lambda ops, args, provider: ops.list_accounts(),
 }
 
-EB_DISPATCH: dict[str, object] = {
+EB_DISPATCH: DispatchMap = {
     "banks": lambda ops, args, provider: ops.list_banks(
         args.country, search=args.search
     ),
@@ -288,18 +312,6 @@ EB_DISPATCH: dict[str, object] = {
     "delete-link": lambda ops, args, provider: ops.delete_link(
         session_id=args.session_id
     ),
-    "create-link": lambda ops, args, provider: (
-        lambda host, port: ops.create_link(
-            aspsp_name=args.aspsp_name,
-            aspsp_country=args.country,
-            callback_host=args.callback_host or host,
-            callback_port=args.callback_port or port,
-            psu_type=args.psu_type,
-            access_days=args.access_days,
-            open_browser=not args.no_browser,
-        )
-    )(
-        *default_callback_binding(provider.redirect_url)
-    ),
+    "create-link": _enablebanking_create_link,
     "accounts": lambda ops, args, provider: ops.list_accounts(),
 }

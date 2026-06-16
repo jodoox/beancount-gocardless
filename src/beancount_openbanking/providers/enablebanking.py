@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
-import secrets
-import webbrowser
-from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from datetime import date
+from typing import Any, Callable
 
 import requests
 
-from ..auth.callback_server import wait_for_oauth_callback
+from ..auth.api_client import EnableBankingApiClient
+from ..auth.enablebanking_types import EnableBankingAccountDetail, EnableBankingSession
+from ..auth.session_manager import SessionManager
 from ..auth.session_store import SessionStore
 from .base import (
     Account,
@@ -18,24 +19,17 @@ from .base import (
     BookingStatus,
     Provider,
     Transaction,
-    create_cached_session,
-    send_with_rate_limit_retry,
 )
 from .enablebanking_types import (
-    EnableBankingAccountDetail,
     EnableBankingBalance,
-    EnableBankingSession,
     EnableBankingTransaction,
 )
+from .http import create_cached_session
 from .utils import normalize_transaction_direction
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.enablebanking.com"
 ENDPOINT_ASPSPS = "/aspsps"
-ENDPOINT_AUTH = "/auth"
-ENDPOINT_SESSIONS = "/sessions"
-ENDPOINT_SESSION = "/sessions/{session_id}"
 ENDPOINT_ACCOUNT_BALANCES = "/accounts/{account_id}/balances"
 ENDPOINT_ACCOUNT_TRANSACTIONS = "/accounts/{account_id}/transactions"
 
@@ -55,86 +49,79 @@ class EnableBankingProvider(Provider):
         self.application_id = application_id
         self.private_key_path = private_key_path
         self.redirect_url = redirect_url
-        self.timeout = timeout
-        self.session_store = (
-            SessionStore(session_store_path) if session_store_path is not None else None
-        )
         self.http = create_cached_session(
             cache_options,
             default_cache_name="enablebanking",
         )
+        self.api = EnableBankingApiClient(
+            http=self.http,
+            build_headers=self._build_headers,
+            timeout=timeout,
+        )
+        self.session_manager = SessionManager(
+            http=self.http,
+            build_headers=self._build_headers,
+            session_store=(
+                SessionStore(session_store_path)
+                if session_store_path is not None
+                else None
+            ),
+            redirect_url=redirect_url,
+            timeout=timeout,
+        )
 
-    def _require_session_store(self) -> SessionStore:
-        if self.session_store is None:
-            raise RuntimeError(
-                "Enable Banking session storage is not configured. "
-                "Set session_store_path to a writable directory."
-            )
-        return self.session_store
+    @classmethod
+    def from_config(cls, config: object) -> "EnableBankingProvider":
+        """Build a provider from a parsed ``EnableBankingConfig``."""
+        from ..config import EnableBankingConfig
 
-    def _headers(self) -> dict[str, str]:
+        assert isinstance(config, EnableBankingConfig)
+        return cls(
+            application_id=config.application_id,
+            private_key_path=config.private_key_path,
+            redirect_url=config.redirect_url,
+            session_store_path=config.session_store_path,
+        )
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "EnableBankingProvider":
+        """Build a provider from already-validated CLI arguments."""
+        return cls(
+            application_id=args.application_id,
+            private_key_path=args.private_key_path,
+            redirect_url=args.redirect_url,
+            session_store_path=args.session_store_path,
+        )
+
+    @staticmethod
+    def credentials_from_args(args: argparse.Namespace) -> tuple[str, str] | None:
+        """Return ``(application_id, private_key_path)`` if present, else ``None``."""
+        app_id = getattr(args, "application_id", None)
+        key_path = getattr(args, "private_key_path", None)
+        if not app_id or not key_path:
+            return None
+        return app_id, key_path
+
+    def _build_headers(self) -> dict[str, str]:
         from ..auth.jwt_signing import build_auth_headers
 
         return build_auth_headers(self.application_id, self.private_key_path)
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
-        headers = kwargs.pop("headers", {})
-        response = send_with_rate_limit_retry(
-            self.http,
-            method,
-            f"{BASE_URL}{path}",
-            headers={**self._headers(), **headers},
-            timeout=self.timeout,
-            **kwargs,
-        )
-        response.raise_for_status()
-        return response
+    def list_sessions(self) -> list[EnableBankingSession]:
+        """Return all stored sessions, refreshed from the API.
 
-    def list_aspsps(self, country: str) -> list[dict[str, Any]]:
-        return (
-            self._request("GET", f"{ENDPOINT_ASPSPS}?country={country}")
-            .json()
-            .get("aspsps", [])
-        )
+        Delegates to :class:`~..auth.session_manager.SessionManager`. Exposed
+        here so the rest of the codebase talks to the provider, not its
+        internal session manager.
+        """
+        return self.session_manager.list_sessions()
 
-    def start_authorization(
-        self,
-        aspsp_name: str,
-        aspsp_country: str,
-        psu_type: str = "personal",
-        access_days: int = 90,
-    ) -> dict[str, Any]:
-        state = secrets.token_urlsafe(24)
-        valid_until = (
-            datetime.now(timezone.utc) + timedelta(days=access_days)
-        ).isoformat()
-        response = self._request(
-            "POST",
-            ENDPOINT_AUTH,
-            json={
-                "access": {"valid_until": valid_until},
-                "aspsp": {"name": aspsp_name, "country": aspsp_country},
-                "state": state,
-                "redirect_url": self.redirect_url,
-                "psu_type": psu_type,
-            },
-        )
-        data = response.json()
-        data["state"] = state
-        return data
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session locally and revoke it at the ASPSP.
 
-    def create_session_from_code(self, code: str) -> EnableBankingSession:
-        raw = self._request("POST", ENDPOINT_SESSIONS, json={"code": code}).json()
-        session_id = raw.get("session_id")
-        if session_id:
-            fresh = self._request(
-                "GET",
-                ENDPOINT_SESSION.format(session_id=session_id),
-            ).json()
-            raw = {**raw, **fresh}
-        session = EnableBankingSession.from_api_response(raw)
-        self._require_session_store().save(session)
-        return session
+        Delegates to :class:`~..auth.session_manager.SessionManager`.
+        """
+        self.session_manager.delete_session(session_id)
 
     def authorize_interactive(
         self,
@@ -145,68 +132,32 @@ class EnableBankingProvider(Provider):
         psu_type: str = "personal",
         access_days: int = 90,
         open_browser: bool = True,
+        on_authorization_url: Callable[[str], None] | None = None,
     ) -> EnableBankingSession:
-        authorization = self.start_authorization(
+        """Run the OAuth authorization flow interactively.
+
+        Delegates to :class:`~..auth.session_manager.SessionManager`.
+        """
+        return self.session_manager.authorize_interactive(
             aspsp_name=aspsp_name,
             aspsp_country=aspsp_country,
+            callback_host=callback_host,
+            callback_port=callback_port,
             psu_type=psu_type,
             access_days=access_days,
+            open_browser=open_browser,
+            on_authorization_url=on_authorization_url,
         )
-        expected_state = authorization["state"]
-        authorization_url = authorization["url"]
 
-        if open_browser:
-            webbrowser.open(authorization_url)
-        else:
-            print(authorization_url)
-
-        result = wait_for_oauth_callback(host=callback_host, port=callback_port)
-        if result.state != expected_state:
-            raise RuntimeError("OAuth state mismatch - possible CSRF attack")
-        if result.error:
-            raise RuntimeError(
-                f"OAuth authorization failed: {result.error} - {result.error_description}"
-            )
-        if not result.code:
-            raise RuntimeError("No authorization code received")
-        return self.create_session_from_code(result.code)
-
-    def get_session(self, session_id: str) -> EnableBankingSession:
-        raw = self._request(
-            "GET", ENDPOINT_SESSION.format(session_id=session_id)
-        ).json()
-        return EnableBankingSession.from_api_response(raw)
-
-    def delete_session(self, session_id: str) -> None:
-        """Delete a session locally and revoke it at the ASPSP."""
-        try:
-            self._request("DELETE", ENDPOINT_SESSION.format(session_id=session_id))
-        except Exception:
-            pass
-        self._require_session_store().delete(session_id)
-
-    def list_sessions(self) -> list[EnableBankingSession]:
-        """Return all stored sessions with fresh API data."""
-        session_store = self._require_session_store()
-        stored = session_store.load_all()
-        sessions: list[EnableBankingSession] = []
-        for session in stored:
-            sid = session.session_id
-            if not sid:
-                continue
-            try:
-                fresh = self.get_session(sid)
-                merged = EnableBankingSession.model_validate(
-                    {**session.model_dump(), **fresh.model_dump()}
-                )
-                session_store.save(merged)
-                sessions.append(merged)
-            except Exception:
-                sessions.append(session)
-        return sessions
+    def list_aspsps(self, country: str) -> list[dict[str, Any]]:
+        return (
+            self.api.request("GET", f"{ENDPOINT_ASPSPS}?country={country}")
+            .json()
+            .get("aspsps", [])
+        )
 
     def list_accounts(self) -> list[Account]:
-        sessions = self.list_sessions()
+        sessions = self.session_manager.list_sessions()
         if not sessions:
             return []
 
@@ -224,9 +175,10 @@ class EnableBankingProvider(Provider):
                 detail = data_by_uid.get(uid)
                 if not detail or not detail.name:
                     try:
-                        resp = self._request("GET", f"/accounts/{uid}/details")
+                        resp = self.api.request("GET", f"/accounts/{uid}/details")
                         detail = EnableBankingAccountDetail.model_validate(resp.json())
-                    except Exception:
+                    except requests.RequestException as exc:
+                        logger.debug("Could not fetch details for %s: %s", uid, exc)
                         detail = None
 
                 if detail:
@@ -245,7 +197,7 @@ class EnableBankingProvider(Provider):
         return result
 
     def get_balances(self, account_id: str) -> list[Balance]:
-        raw_response = self._request(
+        raw_response = self.api.request(
             "GET",
             ENDPOINT_ACCOUNT_BALANCES.format(account_id=account_id),
         ).json()
@@ -285,7 +237,7 @@ class EnableBankingProvider(Provider):
             if continuation_key:
                 current["continuation_key"] = continuation_key
 
-            raw_response = self._request(
+            raw_response = self.api.request(
                 "GET",
                 ENDPOINT_ACCOUNT_TRANSACTIONS.format(account_id=account_id),
                 params=current or None,

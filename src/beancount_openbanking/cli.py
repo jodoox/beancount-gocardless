@@ -6,23 +6,28 @@ import argparse
 import sys
 from typing import Sequence
 
-from .cli_operations import EB_DISPATCH, GC_DISPATCH, EnableBankingOperations, GoCardlessOperations
-from .cli_support import (
-    build_enablebanking_provider,
-    build_gocardless_provider,
-    run_command,
+from .cli_operations import (
+    EB_DISPATCH,
+    GC_DISPATCH,
+    EnableBankingOperations,
+    GoCardlessOperations,
 )
-from .enablebanking_cli import EnableBankingCLI
-from .gocardless_cli import GoCardlessCLI
+from .cli_support import run_command
+from .enablebanking_cli import (
+    EnableBankingCLI,
+    build_enablebanking_provider,
+)
+from .gocardless_cli import (
+    GoCardlessCLI,
+    build_gocardless_provider,
+)
 
 __all__ = ["build_parser", "main"]
 
 
 def _run_gocardless(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     provider = build_gocardless_provider(args, parser)
-    result = run_command(
-        GoCardlessOperations(provider), args, GC_DISPATCH, provider
-    )
+    result = run_command(GoCardlessOperations(provider), args, GC_DISPATCH, provider)
     if result is not None:
         return result
     if sys.stdin.isatty():
@@ -35,9 +40,7 @@ def _run_enablebanking(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> int:
     provider = build_enablebanking_provider(args, parser)
-    result = run_command(
-        EnableBankingOperations(provider), args, EB_DISPATCH, provider
-    )
+    result = run_command(EnableBankingOperations(provider), args, EB_DISPATCH, provider)
     if result is not None:
         return result
     if sys.stdin.isatty():

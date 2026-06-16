@@ -7,11 +7,12 @@ business accounts at the same ASPSP) without overwriting existing sessions.
 
 from __future__ import annotations
 
+import builtins
 import json
 import logging
 from pathlib import Path
 
-from ..providers.enablebanking_types import EnableBankingSession
+from .enablebanking_types import EnableBankingSession
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,13 @@ class SessionStore:
             return EnableBankingSession.model_validate(raw)
         return None
 
-    def load_all(self) -> list[EnableBankingSession]:
+    def load_all(self) -> builtins.list[EnableBankingSession]:
         """Load all stored sessions.
 
         Returns:
             List of session data.
         """
-        sessions: list[EnableBankingSession] = []
+        sessions: builtins.list[EnableBankingSession] = []
         if not self.path.exists():
             return sessions
 
@@ -84,9 +85,9 @@ class SessionStore:
 
         return sessions
 
-    def list(self) -> list[str]:
+    def list(self) -> builtins.list[str]:
         """List all stored session IDs."""
-        ids: list[str] = []
+        ids: builtins.list[str] = []
         if not self.path.exists():
             return ids
 

@@ -28,6 +28,7 @@
 - **GoCardless Auth** — Secret ID + Secret Key → bearer token with ~1h expiry, auto-refreshed.
 - **Enable Banking Auth** — Application ID + RSA private key → signed JWT → API auth. OAuth2 user authorization flow with local callback server.
 - **Session Store** — File-based JSON persistence for Enable Banking sessions, keyed by `session_id`.
+- **Session Manager** — `SessionManager` class (`auth/session_manager.py`) that owns OAuth authorization flow and session lifecycle (create, refresh, delete, list). Composed into `EnableBankingProvider` for account discovery.
 
 ## Data flow (import)
 
